@@ -1,0 +1,72 @@
+//register
+{
+   "jsonrpc": "2.0",
+   "method": "register",
+   "params": {
+      "name":"royyan",
+      "username":"royyan",
+      "email":"royyan@mail.com",
+      "password":"password"
+    },
+   "id": "112"
+}
+resp
+{
+    "jsonrpc": "2.0",
+    "result": {
+        "uid": "85d93b08-e580-47dd-b486-d9e57b5bf6ee",
+        "name": "royyan",
+        "username": "royyan",
+        "email": "royyan@mail.com",
+        "jwt": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFeHBpcmVzQXQiOjE2NzI2NDE0NjcsIklEIjoiODVkOTNiMDgtZTU4MC00N2RkLWI0ODYtZDllNTdiNWJmNmVlIiwiTmFtZSI6InJveXlhbiJ9.QYIwGy6h-MP7nyYn_AqnCoNzbv-2Ys0dEjNS5ciDSnE",
+        "isregistered": false
+    },
+    "id": "112"
+}
+confirm registration
+{
+   "jsonrpc": "2.0",
+   "method": "confirmregistration",
+   "params": {
+      "uid": "85d93b08-e580-47dd-b486-d9e57b5bf6ee",
+      "jwt": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFeHBpcmVzQXQiOjE2NzI2NDE0NjcsIklEIjoiODVkOTNiMDgtZTU4MC00N2RkLWI0ODYtZDllNTdiNWJmNmVlIiwiTmFtZSI6InJveXlhbiJ9.QYIwGy6h-MP7nyYn_AqnCoNzbv-2Ys0dEjNS5ciDSnE",
+      "code": "962813"
+    },
+   "id": "112"
+}
+resp
+{
+    "jsonrpc": "2.0",
+    "result": {
+        "uid": "85d93b08-e580-47dd-b486-d9e57b5bf6ee",
+        "name": "royyan",
+        "username": "royyan",
+        "email": "royyan@mail.com",
+        "jwt": "",
+        "isregistered": true
+    },
+    "id": "112"
+}
+get profile
+{
+   "jsonrpc": "2.0",
+   "method": "getprofile",
+   "params": {
+      "uid": "85d93b08-e580-47dd-b486-d9e57b5bf6ee",
+      "jwt": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFeHBpcmVzQXQiOjE2NzI2NDE0NjcsIklEIjoiODVkOTNiMDgtZTU4MC00N2RkLWI0ODYtZDllNTdiNWJmNmVlIiwiTmFtZSI6InJveXlhbiJ9.QYIwGy6h-MP7nyYn_AqnCoNzbv-2Ys0dEjNS5ciDSnE"
+    },
+   "id": "113"
+}
+resp
+{
+    "jsonrpc": "2.0",
+    "result": {
+        "uid": "85d93b08-e580-47dd-b486-d9e57b5bf6ee",
+        "name": "royyan",
+        "username": "royyan",
+        "email": "royyan@mail.com",
+        "jwt": "",
+        "isregistered": true
+    },
+    "id": "113"
+}
