@@ -2,7 +2,13 @@ package user
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
+	"pesatu/auth"
+	"pesatu/jsonrpc2"
+	"pesatu/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-logr/logr"
@@ -26,6 +32,37 @@ func NewUserControllerRoute(mongoclient *mongo.Client, ctx context.Context, l lo
 	return UserRouteController{userController, limiter}
 }
 
+func CheckAllowCredentials(ctx *gin.Context, res *ResponseUser, code int) *ResponseUser {
+	if res != nil {
+		a := ctx.GetHeader("Access-Control-Allow-Credentials")
+		c := ctx.GetHeader("credentials")
+		// Logger.V(2).Info(fmt.Sprintf("Access-Control-Allow-Credentials : %s", a))
+		// Logger.V(2).Info(fmt.Sprintf("credentials : %s", c))
+		if Logger.V(2).Enabled() {
+			msg := "request header :"
+			for k, v := range ctx.Request.Header {
+				msg = (fmt.Sprintf("%s\n%s: %s", msg, k, v))
+			}
+			Logger.V(2).Info(msg)
+		}
+
+		if a == "true" || c == "true" {
+			Logger.V(2).Info("Set the JWT as an HTTP-only cookie")
+			// Set the JWT as an HTTP-only cookie
+			http.SetCookie(ctx.Writer, &http.Cookie{
+				Name:     "jwt",
+				Value:    res.JWT,
+				HttpOnly: true,
+				// Domain: ".localhost",
+			})
+
+			res.JWT = "#included"
+		}
+	}
+
+	return res
+}
+
 func (r *UserRouteController) InitRouteTo(rg *gin.Engine) {
 	router := rg.Group("/usr")
 	router.POST("/rpc", func(ctx *gin.Context) {
@@ -36,6 +73,200 @@ func (r *UserRouteController) InitRouteTo(rg *gin.Engine) {
 			return
 		}
 
-		r.userController.RPCHandle(ctx)
+		r.RPCHandle(ctx)
 	})
+}
+
+func (r *UserRouteController) RPCHandle(ctx *gin.Context) {
+	cookieJwt, errCookieJwt := ctx.Cookie("jwt")
+	statuscode := http.StatusBadRequest
+	var jreq jsonrpc2.RPCRequest
+	if err := ctx.ShouldBindJSON(&jreq); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"status": "jsonrpc fail", "message": err.Error()})
+		return
+	} else {
+		Logger.V(2).Info("RPCHandle", jreq.Method)
+	}
+
+	jres := &jsonrpc2.RPCResponse{
+		JSONRPC: "2.0",
+		ID:      jreq.ID,
+	}
+
+	switch jreq.Method {
+	case "Login":
+		var login *Login
+		err := json.Unmarshal(jreq.Params, &login)
+		if err != nil {
+			statuscode = http.StatusBadRequest
+			jres.Error = &jsonrpc2.RPCError{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+			}
+		} else {
+			res, e, code := r.userController.UserLogin(login)
+			res = CheckAllowCredentials(ctx, res, code)
+			jres.Result, _ = utils.ToRawMessage(res)
+			jres.Error = e
+			statuscode = code
+		}
+	case "Register":
+		var reg *CreateUserRequest
+		err := json.Unmarshal(jreq.Params, &reg)
+		if err != nil {
+			statuscode = http.StatusBadRequest
+			jres.Error = &jsonrpc2.RPCError{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+			}
+		} else {
+			res, e, code := r.userController.Register(reg)
+			res = CheckAllowCredentials(ctx, res, code)
+			jres.Result, _ = utils.ToRawMessage(res)
+			jres.Error = e
+			statuscode = code
+		}
+	case "ConfirmRegistration":
+		var reg *ConfirmRegCode
+		iserror := false
+		err := json.Unmarshal(jreq.Params, &reg)
+		var validuser *auth.Claims
+		if err == nil {
+			if errCookieJwt == nil {
+				reg.JWT = cookieJwt
+			}
+			validuser, err = r.userController.ValidateToken(reg.JWT)
+			if err == nil && validuser.GetUID() == reg.UID {
+				res, e, code := r.userController.ConfirmRegistration(reg)
+				jres.Result, _ = utils.ToRawMessage(res)
+				jres.Error = e
+				statuscode = code
+			} else {
+				iserror = true
+			}
+		} else {
+			iserror = true
+		}
+
+		if iserror {
+			statuscode = http.StatusBadRequest
+			jres.Error = &jsonrpc2.RPCError{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+			}
+		}
+
+	case "ResendCode":
+		var reg *GetUserRequest
+		iserror := false
+		err := json.Unmarshal(jreq.Params, &reg)
+		var validuser *auth.Claims
+		if err == nil {
+			if errCookieJwt == nil {
+				reg.JWT = cookieJwt
+			}
+			validuser, err = r.userController.ValidateToken(reg.JWT)
+			if err == nil && validuser.GetUID() == reg.UID {
+				res, e, code := r.userController.ResendCode(reg)
+				jres.Result, _ = utils.ToRawMessage(res)
+				jres.Error = e
+				statuscode = code
+			} else {
+				iserror = true
+			}
+		} else {
+			iserror = true
+		}
+
+		if iserror {
+			statuscode = http.StatusBadRequest
+			jres.Error = &jsonrpc2.RPCError{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+			}
+		}
+
+	case "SendPwdReset":
+		var reg *ForgotPwdRequest
+		err := json.Unmarshal(jreq.Params, &reg)
+		if err == nil {
+			res, e, code := r.userController.ForgotPassword(reg)
+			jres.Result, _ = utils.ToRawMessage(res)
+			jres.Error = e
+			statuscode = code
+		} else {
+			statuscode = http.StatusBadRequest
+			jres.Error = &jsonrpc2.RPCError{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+			}
+		}
+
+	case "ResetPassword":
+		var reg *PwdResetRequest
+		iserror := false
+		err := json.Unmarshal(jreq.Params, &reg)
+		if err == nil {
+			validuser, err := r.userController.ValidateToken(reg.JWT)
+			if err == nil {
+				res, e, code := r.userController.ResetPassword(validuser.GetUID(), reg.Password)
+				jres.Result, _ = utils.ToRawMessage(res)
+				jres.Error = e
+				statuscode = code
+			} else {
+				iserror = true
+			}
+		} else {
+			iserror = true
+		}
+
+		if iserror {
+			statuscode = http.StatusBadRequest
+			jres.Error = &jsonrpc2.RPCError{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+			}
+		}
+
+	case "GetSelf":
+		var reg *GetUserRequest
+		iserror := false
+		err := json.Unmarshal(jreq.Params, &reg)
+		var validuser *auth.Claims
+		if err == nil {
+			if errCookieJwt == nil {
+				reg.JWT = cookieJwt
+			}
+			validuser, err = r.userController.ValidateToken(reg.JWT)
+			if err == nil && validuser.GetUID() == reg.UID {
+				res, e, code := r.userController.FindUserById(reg.UID)
+				jres.Result, _ = utils.ToRawMessage(res)
+				jres.Error = e
+				statuscode = code
+			} else {
+				iserror = true
+			}
+		} else {
+			iserror = true
+		}
+
+		if iserror {
+			statuscode = http.StatusBadRequest
+			jres.Error = &jsonrpc2.RPCError{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+			}
+		}
+
+	default:
+		jres.Error = &jsonrpc2.RPCError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "method not allowed",
+		}
+	}
+
+	if jres.Error != nil {
+		Logger.Error(errors.New(jres.Error.Message), "response with error")
+	}
+	ctx.JSON(statuscode, jres)
 }

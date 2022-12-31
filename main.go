@@ -4,10 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"pesatu/user"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/juju/ratelimit"
 	log "github.com/pion/ion-sfu/pkg/logger"
@@ -81,22 +81,24 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("MongoDB successfully connected...")
+	logger.Info("MongoDB successfully connected...")
 
 	server = gin.Default()
 	limiter := ratelimit.NewBucketWithRate(100, 100)
+	// Enable CORS with the withCredentials option
+	server.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:7000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
+		AllowHeaders:     []string{"Content-Type", "Authorization", "credentials"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
+
 	// 👇 Add the Post Service, Controllers and Routes
 	UserRouteController := user.NewUserControllerRoute(mongoclient, ctx, logger, limiter)
 	UserRouteController.InitRouteTo(server)
 
-	server.GET("/", func(c *gin.Context) {
-		c.Redirect(http.StatusMovedPermanently, "/ping/")
-	})
-	server.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"message": "pong",
-		})
-	})
+	server.Static("/", "./public")
 
 	server.Run(addr)
 }

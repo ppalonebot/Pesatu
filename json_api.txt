@@ -70,3 +70,20 @@ resp
     },
     "id": "113"
 }
+
+[2022-12-30 02:43:48.367] [TRACE] [user_route.go:42] => Content-Type: [application/json] v=2
+[2022-12-30 02:43:48.367] [TRACE] [user_route.go:42] => Sec-Fetch-Mode: [cors] v=2
+[2022-12-30 02:43:48.367] [TRACE] [user_route.go:42] => Accept-Encoding: [gzip, deflate, br] v=2
+[2022-12-30 02:43:48.367] [TRACE] [user_route.go:42] => Credentials: [true] v=2
+[2022-12-30 02:43:48.367] [TRACE] [user_route.go:42] => Accept: [*/*] v=2
+[2022-12-30 02:43:48.367] [TRACE] [user_route.go:42] => Accept-Language: [en-US,en;q=0.9] v=2
+[2022-12-30 02:43:48.367] [TRACE] [user_route.go:42] => Content-Length: [188] v=2
+[2022-12-30 02:43:48.367] [TRACE] [user_route.go:42] => User-Agent: [Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36] v=2
+[2022-12-30 02:43:48.368] [TRACE] [user_route.go:42] => Origin: [http://localhost:3000] v=2
+[2022-12-30 02:43:48.368] [TRACE] [user_route.go:42] => Sec-Fetch-Site: [same-site] v=2
+[2022-12-30 02:43:48.368] [TRACE] [user_route.go:42] => Sec-Fetch-Dest: [empty] v=2
+[2022-12-30 02:43:48.381] [TRACE] [user_route.go:42] => Referer: [http://localhost:3000/] v=2
+[2022-12-30 02:43:48.382] [TRACE] [user_route.go:42] => Connection: [keep-alive] v=2
+[2022-12-30 02:43:48.382] [TRACE] [user_route.go:42] => Sec-Ch-Ua: ["Not?A_Brand";v="8", "Chromium";v="108", "Google Chrome";v="108"] v=2 
+[2022-12-30 02:43:48.382] [TRACE] [user_route.go:42] => Sec-Ch-Ua-Mobile: [?0] v=2
+[2022-12-30 02:43:48.382] [TRACE] [user_route.go:42] => Sec-Ch-Ua-Platform: ["Windows"] v=2

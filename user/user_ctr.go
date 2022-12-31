@@ -12,7 +12,6 @@ import (
 	"pesatu/jsonrpc2"
 	"pesatu/utils"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
@@ -75,13 +74,13 @@ func (uc *UserController) Register(user *CreateUserRequest) (*ResponseUser, *jso
 	if len(errres) > 0 {
 		x, err := utils.ToRawMessage(errres)
 		if err != nil {
-			return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusForbidden
+			return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
 		}
 		return nil, &jsonrpc2.RPCError{
 			Code:    http.StatusForbidden,
 			Message: "forbidden, invalid input",
 			Params:  x,
-		}, http.StatusForbidden
+		}, http.StatusOK
 	}
 
 	password, _ := auth.GeneratePassword("password")
@@ -102,16 +101,16 @@ func (uc *UserController) Register(user *CreateUserRequest) (*ResponseUser, *jso
 
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
-			return nil, &jsonrpc2.RPCError{Code: http.StatusConflict, Message: err.Error()}, http.StatusConflict
+			return nil, &jsonrpc2.RPCError{Code: http.StatusConflict, Message: err.Error()}, http.StatusOK
 		}
-		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusBadGateway
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
 	}
 
 	// Create a JWT
 	token, err := auth.CreateJWTToken(newUser.UID, newUser.Username)
 
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusNotFound
+		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
 	}
 
 	var resUser ResponseUser
@@ -152,17 +151,17 @@ func (uc *UserController) ResetPassword(uid, newPassword string) (*ResponseStatu
 
 	ok := utils.IsValidUid(uid)
 	if !ok {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "uid invalid"}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "uid invalid"}, http.StatusOK
 	}
 
 	_, err := utils.IsValidPassword(newPassword)
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
 	}
 
 	user, err := uc.userService.FindUserById(uid)
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
 	}
 
 	password, _ := auth.GeneratePassword(newPassword)
@@ -181,33 +180,33 @@ func (uc *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus
 	Logger.V(2).Info(fmt.Sprintf("forgot password prosedure for %s", req.Email))
 
 	if isemail := utils.IsValidEmail(req.Email); !isemail {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "email invalid"}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "email invalid"}, http.StatusOK
 	}
 
 	user, err := uc.userService.FindUserByEmail(req.Email)
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
 	}
 
 	if !user.Reg.Registered {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user is not registered"}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user is not registered"}, http.StatusOK
 	}
 
 	delta := time.Since(user.Reg.SendCodeAt)
 	if delta.Seconds() < 50.0 {
 		// Time delta is less than 30 seconds
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: fmt.Sprintf("please try again after %.1f seconds", 50.0-delta.Seconds())}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: fmt.Sprintf("please try again after %.1f seconds", 50.0-delta.Seconds())}, http.StatusOK
 	}
 
 	jwt, err := auth.CreateJWTWithExpire(user.UID, user.Username, auth.AnHour)
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: "create JWT failed"}, http.StatusInternalServerError
+		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: "create JWT failed"}, http.StatusOK
 	}
 
 	//todo: go send email list goroutine
 	go func(email, token string) {
 		data := &PwdResetRequest{JWT: token}
-		err := auth.SendCodeMail(email, data)
+		err := auth.SendForgotPwdMail(email, data)
 		if err != nil {
 			Logger.Error(err, "send email error")
 		}
@@ -231,22 +230,22 @@ func (uc *UserController) ResendCode(req *GetUserRequest) (*ResponseStatus, *jso
 		return nil, &jsonrpc2.RPCError{
 			Code:    http.StatusForbidden,
 			Message: "uid invalid",
-		}, http.StatusForbidden
+		}, http.StatusOK
 	}
 
 	user, err := uc.userService.FindUserById(req.UID)
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
 	}
 
 	if user.Reg.Registered {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user already registered"}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user already registered"}, http.StatusOK
 	}
 
 	delta := time.Since(user.Reg.SendCodeAt)
 	if delta.Seconds() < 50.0 {
 		// Time delta is less than 30 seconds
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: fmt.Sprintf("please try again after %.1f seconds", 50.0-delta.Seconds())}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: fmt.Sprintf("please try again after %.1f seconds", 50.0-delta.Seconds())}, http.StatusOK
 	}
 
 	go SendCodeEmail(user.Email, user.Reg)
@@ -270,7 +269,7 @@ func (uc *UserController) ConfirmRegistration(confirm *ConfirmRegCode) (*Respons
 
 	_, err := utils.IsValidActivationCode(confirm.Code)
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
 	}
 
 	ok := utils.IsValidUid(confirm.UID)
@@ -278,26 +277,26 @@ func (uc *UserController) ConfirmRegistration(confirm *ConfirmRegCode) (*Respons
 		return nil, &jsonrpc2.RPCError{
 			Code:    http.StatusForbidden,
 			Message: "uid invalid",
-		}, http.StatusForbidden
+		}, http.StatusOK
 	}
 
 	user, err := uc.userService.FindUserById(confirm.UID)
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
 	}
 
 	if user.Reg.Registered {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusNotAcceptable, Message: "user already registered"}, http.StatusNotAcceptable
+		return nil, &jsonrpc2.RPCError{Code: http.StatusNotAcceptable, Message: "user already registered"}, http.StatusOK
 	}
 
 	if user.Reg.Code == confirm.Code {
 		user.Reg.Registered = true
 		user, err = uc.userService.UpdateUser(user.Id, user)
 		if err != nil {
-			return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusInternalServerError
+			return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
 		}
 	} else {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: "wrong code"}, http.StatusNotFound
+		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: "wrong code"}, http.StatusOK
 	}
 
 	var resUser ResponseUser
@@ -321,26 +320,26 @@ func (uc *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCE
 		Logger.V(2).Info("login with username")
 		_, err = utils.IsValidUsername(login.Username)
 		if err != nil {
-			return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusForbidden
+			return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
 		}
 
 		user, err = uc.userService.FindUserByUsername(login.Username)
 	}
 
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusNotFound
+		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
 	}
 
 	//check password
 	ok, err := auth.ComparePassword(login.Password, user.Password)
 	if !ok || err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "wrong password"}, http.StatusForbidden
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "wrong password"}, http.StatusOK
 	}
 
 	// Create a JWT
 	token, err := auth.CreateJWTToken(user.UID, user.Username)
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusInternalServerError
+		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
 	}
 
 	var resUser ResponseUser
@@ -373,7 +372,7 @@ func (uc *UserController) FindUserById(userUID string) (*ResponseUser, *jsonrpc2
 		return nil, &jsonrpc2.RPCError{
 			Code:    http.StatusForbidden,
 			Message: "uid invalid",
-		}, http.StatusForbidden
+		}, http.StatusOK
 	}
 
 	user, err := uc.userService.FindUserById(userUID)
@@ -383,13 +382,13 @@ func (uc *UserController) FindUserById(userUID string) (*ResponseUser, *jsonrpc2
 			return nil, &jsonrpc2.RPCError{
 				Code:    http.StatusNotFound,
 				Message: err.Error(),
-			}, http.StatusNotFound
+			}, http.StatusOK
 		}
 
 		return nil, &jsonrpc2.RPCError{
 			Code:    http.StatusBadGateway,
 			Message: err.Error(),
-		}, http.StatusBadGateway
+		}, http.StatusOK
 	}
 
 	var resUser ResponseUser
@@ -442,186 +441,3 @@ func (uc *UserController) FindUserById(userUID string) (*ResponseUser, *jsonrpc2
 // 	// ctx.JSON(http.StatusNoContent, nil)
 // 	ctx.JSON(http.StatusOK, gin.H{"status": "deleted"})
 // }
-
-func (uc *UserController) RPCHandle(ctx *gin.Context) {
-	statuscode := http.StatusBadRequest
-	var jreq jsonrpc2.RPCRequest
-	if err := ctx.ShouldBindJSON(&jreq); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"status": "jsonrpc fail", "message": err.Error()})
-		return
-	} else {
-		Logger.V(2).Info("RPCHandle", jreq.Method)
-	}
-
-	jres := &jsonrpc2.RPCResponse{
-		JSONRPC: "2.0",
-		ID:      jreq.ID,
-	}
-
-	switch jreq.Method {
-	case "Login":
-		var login *Login
-		err := json.Unmarshal(jreq.Params, &login)
-		if err != nil {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		} else {
-			res, e, code := uc.UserLogin(login)
-			jres.Result, _ = utils.ToRawMessage(res)
-			jres.Error = e
-			statuscode = code
-		}
-	case "Register":
-		var reg *CreateUserRequest
-		err := json.Unmarshal(jreq.Params, &reg)
-		if err != nil {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		} else {
-			res, e, code := uc.Register(reg)
-			jres.Result, _ = utils.ToRawMessage(res)
-			jres.Error = e
-			statuscode = code
-		}
-	case "ConfirmRegistration":
-		var confirm *ConfirmRegCode
-		iserror := false
-		err := json.Unmarshal(jreq.Params, &confirm)
-		var validuser *auth.Claims
-		if err == nil {
-			validuser, err = uc.ValidateToken(confirm.JWT)
-			if err == nil && validuser.GetUID() == confirm.UID {
-				res, e, code := uc.ConfirmRegistration(confirm)
-				jres.Result, _ = utils.ToRawMessage(res)
-				jres.Error = e
-				statuscode = code
-			} else {
-				iserror = true
-			}
-		} else {
-			iserror = true
-		}
-
-		if iserror {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		}
-
-	case "ResendCode":
-		var reg *GetUserRequest
-		iserror := false
-		err := json.Unmarshal(jreq.Params, &reg)
-		var validuser *auth.Claims
-		if err == nil {
-			validuser, err = uc.ValidateToken(reg.JWT)
-			if err == nil && validuser.GetUID() == reg.UID {
-				res, e, code := uc.ResendCode(reg)
-				jres.Result, _ = utils.ToRawMessage(res)
-				jres.Error = e
-				statuscode = code
-			} else {
-				iserror = true
-			}
-		} else {
-			iserror = true
-		}
-
-		if iserror {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		}
-
-	case "SendPwdReset":
-		var reg *ForgotPwdRequest
-		err := json.Unmarshal(jreq.Params, &reg)
-		if err == nil {
-			res, e, code := uc.ForgotPassword(reg)
-			jres.Result, _ = utils.ToRawMessage(res)
-			jres.Error = e
-			statuscode = code
-		} else {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		}
-
-	case "ResetPassword":
-		var reg *PwdResetRequest
-		iserror := false
-		err := json.Unmarshal(jreq.Params, &reg)
-		if err == nil {
-			validuser, err := uc.ValidateToken(reg.JWT)
-			if err == nil {
-				res, e, code := uc.ResetPassword(validuser.GetUID(), reg.Password)
-				jres.Result, _ = utils.ToRawMessage(res)
-				jres.Error = e
-				statuscode = code
-			} else {
-				iserror = true
-			}
-		} else {
-			iserror = true
-		}
-
-		if iserror {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		}
-
-	case "GetSelf":
-		var reg *GetUserRequest
-		iserror := false
-		err := json.Unmarshal(jreq.Params, &reg)
-		var validuser *auth.Claims
-		if err == nil {
-			validuser, err = uc.ValidateToken(reg.JWT)
-			if err == nil && validuser.GetUID() == reg.UID {
-				res, e, code := uc.FindUserById(reg.UID)
-				jres.Result, _ = utils.ToRawMessage(res)
-				jres.Error = e
-				statuscode = code
-			} else {
-				iserror = true
-			}
-		} else {
-			iserror = true
-		}
-
-		if iserror {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		}
-
-	default:
-		Logger.Error(errors.New(fmt.Sprintf("method not allowed: %s", jreq.Method)), "method error")
-		jres.Error = &jsonrpc2.RPCError{
-			Code:    http.StatusMethodNotAllowed,
-			Message: "method not allowed",
-		}
-	}
-
-	if jres.Error != nil {
-		Logger.Error(errors.New(jres.Error.Message), "response with error")
-	}
-	ctx.JSON(statuscode, jres)
-}

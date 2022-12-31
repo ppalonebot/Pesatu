@@ -119,7 +119,7 @@ func (usr *UserService) FindUserByEmail(email string) (*DBUser, error) {
 
 	if err := usr.userCollection.FindOne(usr.ctx, query).Decode(&user); err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("user unavailable")
+			return nil, errors.New("user email unavailable")
 		}
 		return nil, err
 	}
