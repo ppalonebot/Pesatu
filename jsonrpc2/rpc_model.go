@@ -17,9 +17,9 @@ type RPCResponse struct {
 }
 
 type RPCError struct {
-	Code    int             `json:"code"`
-	Message string          `json:"message"`
-	Params  json.RawMessage `json:"params,omitempty"`
+	Code    int                `json:"code"`
+	Message string             `json:"message"`
+	Params  []*InputFieldError `json:"params,omitempty"`
 }
 
 type InputFieldError struct {

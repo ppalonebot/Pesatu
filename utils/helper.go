@@ -78,7 +78,7 @@ func IsValidActivationCode(s string) (bool, error) {
 
 func IsValidPassword(s string) (bool, error) {
 	if len(s) == 0 {
-		return false, errors.New("password to can not empty")
+		return false, errors.New("password can not empty")
 	}
 
 	if len(s) < 6 {
@@ -90,7 +90,7 @@ func IsValidPassword(s string) (bool, error) {
 
 func IsValidUsername(s string) (bool, error) {
 	if len(s) == 0 {
-		return false, errors.New("username to can not empty")
+		return false, errors.New("username can not empty")
 	}
 
 	if len(s) < 2 {
@@ -103,7 +103,7 @@ func IsValidUsername(s string) (bool, error) {
 
 	match, err := regexp.MatchString(`^[a-z0-9][a-z0-9-_]*$`, s)
 	if !match || err != nil {
-		return false, errors.New("username can only have alphanumeric charater, '-', '_', and can't start with '-' and '_'")
+		return false, errors.New("username can only have alphanumeric,'-', '_', and start with alphanumeric characters")
 	}
 
 	return true, nil

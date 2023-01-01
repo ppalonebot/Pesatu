@@ -72,14 +72,14 @@ func (uc *UserController) Register(user *CreateUserRequest) (*ResponseUser, *jso
 	}
 
 	if len(errres) > 0 {
-		x, err := utils.ToRawMessage(errres)
-		if err != nil {
-			return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
-		}
+		// x, err := utils.ToRawMessage(errres)
+		// if err != nil {
+		// 	return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
+		// }
 		return nil, &jsonrpc2.RPCError{
 			Code:    http.StatusForbidden,
 			Message: "forbidden, invalid input",
-			Params:  x,
+			Params:  errres,
 		}, http.StatusOK
 	}
 
@@ -310,9 +310,10 @@ func (uc *UserController) ConfirmRegistration(confirm *ConfirmRegCode) (*Respons
 
 func (uc *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("Login attempt from %s", login.Username))
-
+	//todo send error params for field input
 	var user *DBUser
 	var err error
+	var errres []*jsonrpc2.InputFieldError
 	if isemail := utils.IsValidEmail(login.Username); isemail {
 		Logger.V(2).Info("login with email")
 		user, err = uc.userService.FindUserByEmail(login.Username)
@@ -320,20 +321,28 @@ func (uc *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCE
 		Logger.V(2).Info("login with username")
 		_, err = utils.IsValidUsername(login.Username)
 		if err != nil {
-			return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
+			errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "username"})
+			return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error(), Params: errres}, http.StatusOK
 		}
-
 		user, err = uc.userService.FindUserByUsername(login.Username)
 	}
 
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
+		errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "username"})
+		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error(), Params: errres}, http.StatusOK
+	}
+
+	_, err = utils.IsValidPassword(login.Password)
+	if err != nil {
+		errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "password"})
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error(), Params: errres}, http.StatusOK
 	}
 
 	//check password
 	ok, err := auth.ComparePassword(login.Password, user.Password)
 	if !ok || err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "wrong password"}, http.StatusOK
+		errres = append(errres, &jsonrpc2.InputFieldError{Error: "wrong password", Field: "password"})
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid password", Params: errres}, http.StatusOK
 	}
 
 	// Create a JWT
