@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"pesatu/user"
 
@@ -98,7 +99,16 @@ func main() {
 	UserRouteController := user.NewUserControllerRoute(mongoclient, ctx, logger, limiter)
 	UserRouteController.InitRouteTo(server)
 
-	server.Static("/", "./public")
+	server.Static("/static", "./public/static")
+	server.Static("/m", "./public")
+	server.GET("/", func(c *gin.Context) {
+		if limiter.TakeAvailable(1) == 0 {
+			c.AbortWithStatus(http.StatusTooManyRequests)
+			return
+		}
+
+		c.Redirect(http.StatusMovedPermanently, "/m/")
+	})
 
 	server.Run(addr)
 }

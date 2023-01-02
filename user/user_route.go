@@ -9,6 +9,7 @@ import (
 	"pesatu/auth"
 	"pesatu/jsonrpc2"
 	"pesatu/utils"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-logr/logr"
@@ -25,7 +26,7 @@ type UserRouteController struct {
 
 func NewUserControllerRoute(mongoclient *mongo.Client, ctx context.Context, l logr.Logger, limiter *ratelimit.Bucket) UserRouteController {
 	Logger = l
-	Logger.V(2).Info("NewUserControllerRoute created")
+	Logger.V(2).Info("NewUserRoute created")
 	userCollection := mongoclient.Database("pesatu").Collection("users")
 	userService := NewUserService(userCollection, ctx)
 	userController := NewUserController(userService)
@@ -53,6 +54,8 @@ func CheckAllowCredentials(ctx *gin.Context, res *ResponseUser, code int) *Respo
 				Name:     "jwt",
 				Value:    res.JWT,
 				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+				Expires:  time.Now().Add(1 * time.Hour),
 				// Domain: ".localhost",
 			})
 
@@ -65,16 +68,30 @@ func CheckAllowCredentials(ctx *gin.Context, res *ResponseUser, code int) *Respo
 
 func (r *UserRouteController) InitRouteTo(rg *gin.Engine) {
 	router := rg.Group("/usr")
-	router.POST("/rpc", func(ctx *gin.Context) {
-		// Check if the request is allowed by the rate limiter
-		if r.limiter.TakeAvailable(1) == 0 {
-			// The request is not allowed, so return an error
-			ctx.AbortWithStatus(http.StatusTooManyRequests)
-			return
-		}
+	router.POST("/rpc", r.RateLimit, r.RPCHandle)
+	router.GET("/resetpwd", r.RateLimit, r.ResetPwdHandler)
+}
 
-		r.RPCHandle(ctx)
-	})
+func (r *UserRouteController) RateLimit(ctx *gin.Context) {
+	// Check if the request is allowed by the rate limiter
+	if r.limiter.TakeAvailable(1) == 0 {
+		// The request is not allowed, so return an error
+		ctx.AbortWithStatus(http.StatusTooManyRequests)
+		return
+	}
+	ctx.Next()
+}
+
+func (r *UserRouteController) ResetPwdHandler(c *gin.Context) {
+	// Parse the template file
+	t, err := utils.GetTemplateData("resetpassword.html")
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error parsing template: %v", err)
+		return
+	}
+
+	// Render the template, writing the resulting HTML to the response body
+	t.Execute(c.Writer, nil)
 }
 
 func (r *UserRouteController) RPCHandle(ctx *gin.Context) {
@@ -204,15 +221,22 @@ func (r *UserRouteController) RPCHandle(ctx *gin.Context) {
 
 	case "ResetPassword":
 		var reg *PwdResetRequest
+		var err error
 		iserror := false
-		err := json.Unmarshal(jreq.Params, &reg)
+		err = json.Unmarshal(jreq.Params, &reg)
 		if err == nil {
-			validuser, err := r.userController.ValidateToken(reg.JWT)
+			var validuser *auth.Claims
+			validuser, err = r.userController.ValidateToken(reg.JWT)
 			if err == nil {
-				res, e, code := r.userController.ResetPassword(validuser.GetUID(), reg.Password)
-				jres.Result, _ = utils.ToRawMessage(res)
-				jres.Error = e
-				statuscode = code
+				if validuser.GetCmd() == "ResetPassword" {
+					res, e, code := r.userController.ResetPassword(validuser.GetUID(), reg.Password, validuser.GetCode())
+					jres.Result, _ = utils.ToRawMessage(res)
+					jres.Error = e
+					statuscode = code
+				} else {
+					err = errors.New("invalid JWT cmd")
+					iserror = true
+				}
 			} else {
 				iserror = true
 			}
@@ -239,7 +263,7 @@ func (r *UserRouteController) RPCHandle(ctx *gin.Context) {
 			}
 			validuser, err = r.userController.ValidateToken(reg.JWT)
 			if err == nil && validuser.GetUID() == reg.UID {
-				res, e, code := r.userController.FindUserById(reg.UID)
+				res, e, code := r.userController.FindUserById(reg.UID, validuser.GetCode())
 				jres.Result, _ = utils.ToRawMessage(res)
 				jres.Error = e
 				statuscode = code

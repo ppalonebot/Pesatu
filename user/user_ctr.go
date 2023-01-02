@@ -107,7 +107,7 @@ func (uc *UserController) Register(user *CreateUserRequest) (*ResponseUser, *jso
 	}
 
 	// Create a JWT
-	token, err := auth.CreateJWTToken(newUser.UID, newUser.Username)
+	token, err := auth.CreateJWTToken(newUser.UID, newUser.Username, newUser.Reg.Code)
 
 	if err != nil {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
@@ -146,7 +146,7 @@ func (uc *UserController) Register(user *CreateUserRequest) (*ResponseUser, *jso
 //		ctx.JSON(http.StatusOK, gin.H{"status": "success", "data": updatedUser})
 //	}
 
-func (uc *UserController) ResetPassword(uid, newPassword string) (*ResponseStatus, *jsonrpc2.RPCError, int) {
+func (uc *UserController) ResetPassword(uid, newPassword, code string) (*ResponseStatus, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("reset password %s", uid))
 
 	ok := utils.IsValidUid(uid)
@@ -164,8 +164,16 @@ func (uc *UserController) ResetPassword(uid, newPassword string) (*ResponseStatu
 		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
 	}
 
+	if user.Reg.Code != code {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: "invalid jwt"}, http.StatusOK
+	}
+
 	password, _ := auth.GeneratePassword(newPassword)
 	user.Password = password
+
+	if user.Reg.Registered {
+		user.Reg.Code = utils.GenerateRandomNumber()
+	}
 
 	user, err = uc.userService.UpdateUser(user.Id, user)
 	if err != nil {
@@ -179,28 +187,35 @@ func (uc *UserController) ResetPassword(uid, newPassword string) (*ResponseStatu
 func (uc *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("forgot password prosedure for %s", req.Email))
 
+	var errres []*jsonrpc2.InputFieldError
 	if isemail := utils.IsValidEmail(req.Email); !isemail {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "email invalid"}, http.StatusOK
+		errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid email format", Field: "email"})
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "email error", Params: errres}, http.StatusOK
 	}
 
 	user, err := uc.userService.FindUserByEmail(req.Email)
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
+		errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "email"})
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error(), Params: errres}, http.StatusOK
 	}
 
+	code := user.Reg.Code
 	if !user.Reg.Registered {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user is not registered"}, http.StatusOK
+		// errres = append(errres, &jsonrpc2.InputFieldError{Error: "user is not registered", Field: "email"})
+		// return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user unknown", Params: errres}, http.StatusOK
+	} else {
+		code = utils.GenerateRandomNumber()
 	}
 
 	delta := time.Since(user.Reg.SendCodeAt)
 	if delta.Seconds() < 50.0 {
 		// Time delta is less than 30 seconds
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: fmt.Sprintf("please try again after %.1f seconds", 50.0-delta.Seconds())}, http.StatusOK
+		return nil, &jsonrpc2.RPCError{Code: http.StatusTooManyRequests, Message: fmt.Sprintf("please try again after %.1f seconds", 50.0-delta.Seconds())}, http.StatusOK
 	}
 
-	jwt, err := auth.CreateJWTWithExpire(user.UID, user.Username, auth.AnHour)
+	jwt, err := auth.CreateJWTWithExpire(user.UID, user.Username, "ResetPassword", code, auth.AnHour)
 	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: "create JWT failed"}, http.StatusOK
+		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: "server busy"}, http.StatusOK
 	}
 
 	//todo: go send email list goroutine
@@ -213,6 +228,7 @@ func (uc *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus
 	}(user.Email, jwt)
 
 	user.Reg.SendCodeAt = time.Now()
+	user.Reg.Code = code
 	user, err = uc.userService.UpdateUser(user.Id, user)
 	if err != nil {
 		Logger.Error(err, "internal error, while update user in ForgotPassword")
@@ -346,7 +362,7 @@ func (uc *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCE
 	}
 
 	// Create a JWT
-	token, err := auth.CreateJWTToken(user.UID, user.Username)
+	token, err := auth.CreateJWTToken(user.UID, user.Username, user.Reg.Code)
 	if err != nil {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
 	}
@@ -369,11 +385,11 @@ func (uc *UserController) ValidateToken(jwt string) (*auth.Claims, error) {
 			return user, nil
 		}
 	} else {
-		return nil, errors.New("Please login")
+		return nil, errors.New("invalid token")
 	}
 }
 
-func (uc *UserController) FindUserById(userUID string) (*ResponseUser, *jsonrpc2.RPCError, int) {
+func (uc *UserController) FindUserById(userUID, code string) (*ResponseUser, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("find a user by uid %s", userUID))
 
 	ok := utils.IsValidUid(userUID)
@@ -398,6 +414,10 @@ func (uc *UserController) FindUserById(userUID string) (*ResponseUser, *jsonrpc2
 			Code:    http.StatusBadGateway,
 			Message: err.Error(),
 		}, http.StatusOK
+	}
+
+	if user.Reg.Code != code {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
 	}
 
 	var resUser ResponseUser

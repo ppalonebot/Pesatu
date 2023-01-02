@@ -3,7 +3,11 @@ package utils
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"html/template"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -110,6 +114,9 @@ func IsValidUsername(s string) (bool, error) {
 }
 
 func IsValidEmail(s string) bool {
+	if len(s) < 3 {
+		return false
+	}
 	return govalidator.IsEmail(s)
 }
 
@@ -132,4 +139,28 @@ func CopyStruct(src, dst interface{}) {
 			dstField.Set(srcField)
 		}
 	}
+}
+
+func GetTemplateData(file_html string) (*template.Template, error){
+	templateData, err := template.ParseFiles(fmt.Sprintf("../template/%s", file_html))
+	if err != nil {
+		// Get the current working directory
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+
+		// Get the absolute path of the current file
+		absPath, err := filepath.Abs(wd)
+		if err != nil {
+			return nil, err
+		}
+
+		templateData, err = template.ParseFiles(fmt.Sprintf("%s/template/%s", absPath, file_html))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return templateData, nil
 }

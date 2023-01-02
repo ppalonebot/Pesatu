@@ -3,10 +3,8 @@ package auth
 import (
 	"bytes"
 	"fmt"
-	"html/template"
 	"net/smtp"
-	"os"
-	"path/filepath"
+	"pesatu/utils"
 	"strings"
 
 	"gopkg.in/gomail.v2"
@@ -50,25 +48,26 @@ func SendMail(to []string, cc []string, subject, message string) error {
 func SendHtmlMail(to string, subject string, data any, template_thtml string) error {
 	// Read the HTML template file into a variable
 	var body bytes.Buffer
-	templateData, err := template.ParseFiles(fmt.Sprintf("../template/%s", template_thtml))
-	if err != nil {
-		// Get the current working directory
-		wd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
+	// templateData, err := template.ParseFiles(fmt.Sprintf("../template/%s", template_thtml))
+	// if err != nil {
+	// 	// Get the current working directory
+	// 	wd, err := os.Getwd()
+	// 	if err != nil {
+	// 		return err
+	// 	}
 
-		// Get the absolute path of the current file
-		absPath, err := filepath.Abs(wd)
-		if err != nil {
-			return err
-		}
+	// 	// Get the absolute path of the current file
+	// 	absPath, err := filepath.Abs(wd)
+	// 	if err != nil {
+	// 		return err
+	// 	}
 
-		templateData, err = template.ParseFiles(fmt.Sprintf("%s/template/%s", absPath, template_thtml))
-		if err != nil {
-			return err
-		}
-	}
+	// 	templateData, err = template.ParseFiles(fmt.Sprintf("%s/template/%s", absPath, template_thtml))
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// }
+	templateData, err := utils.GetTemplateData(template_thtml)
 
 	err = templateData.Execute(&body, data)
 	if err != nil {
