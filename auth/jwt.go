@@ -9,23 +9,13 @@ import (
 
 const hmacSecret = "WjdwZUh2dWJGdFB1UWRybg=="
 
-// const defaulExpireTime = 604800 // 1 week
-
-type ExpireTime int
-
-const (
-	AWeek  ExpireTime = 604800
-	ADay   ExpireTime = 86400
-	AnHour ExpireTime = 3600
-)
-
-// member must started with capital and contains ID
 type Claims struct {
-	ID   string `json:"id"`
-	Usr  string `json:"usr"`
-	Cmd  string `json:"cmd"`
-	Code string `json:"code"`
-	jwt.StandardClaims
+	jwt.MapClaims
+	ID        string `json:"id"`
+	Usr       string `json:"usr"`
+	Cmd       string `json:"cmd"`
+	Code      string `json:"code"`
+	ExpiresAt int64  `json:"exp"`
 }
 
 func (c *Claims) GetUID() string {
@@ -46,17 +36,20 @@ func (c *Claims) GetCmd() string {
 
 // CreateJWTToken generates a JWT signed token for for the given user id and username
 func CreateJWTToken(id, username, code string) (string, error) {
-	return CreateJWTWithExpire(id, username, "Login", code, AnHour)
+	return CreateJWTWithExpire(id, username, "Login", code, time.Hour*24)
 }
 
-func CreateJWTWithExpire(id string, username string, cmd string, code string, expired ExpireTime) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"ID":        id,
-		"Usr":       username,
-		"Cmd":       cmd,
-		"Code":      code,
-		"ExpiresAt": time.Now().Unix() + int64(expired),
-	})
+func CreateJWTWithExpire(id string, username string, cmd string, code string, expired time.Duration) (string, error) {
+	claims := Claims{
+		MapClaims: jwt.MapClaims{},
+		ID:        id,
+		Usr:       username,
+		Cmd:       cmd,
+		Code:      code,
+	}
+
+	claims.ExpiresAt = time.Now().Add(expired).Unix()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(hmacSecret))
 
 	return tokenString, err
@@ -73,9 +66,17 @@ func ValidateToken(tokenString string) (*Claims, error) {
 		return []byte(hmacSecret), nil
 	})
 
-	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
-		return claims, nil
-	} else {
+	// Get the custom claims from the token
+	claims, ok := token.Claims.(*Claims)
+	if !ok || !token.Valid {
 		return nil, err
 	}
+
+	// Check the expiration time
+	expiresAt := time.Unix(claims.ExpiresAt, 0)
+	if time.Now().After(expiresAt) {
+		return claims, fmt.Errorf("token expired")
+	}
+
+	return claims, nil
 }

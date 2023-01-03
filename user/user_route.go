@@ -55,7 +55,7 @@ func CheckAllowCredentials(ctx *gin.Context, res *ResponseUser, code int) *Respo
 				Value:    res.JWT,
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
-				Expires:  time.Now().Add(1 * time.Hour),
+				Expires:  time.Now().Add(25 * time.Hour),
 				// Domain: ".localhost",
 			})
 
@@ -102,7 +102,7 @@ func (r *UserRouteController) RPCHandle(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"status": "jsonrpc fail", "message": err.Error()})
 		return
 	} else {
-		Logger.V(2).Info("RPCHandle", jreq.Method)
+		Logger.V(2).Info(fmt.Sprintf("RPCHandle %s", jreq.Method))
 	}
 
 	jres := &jsonrpc2.RPCResponse{
@@ -127,6 +127,47 @@ func (r *UserRouteController) RPCHandle(ctx *gin.Context) {
 			jres.Error = e
 			statuscode = code
 		}
+	case "RefreshToken":
+		var reg *GetUserRequest
+		var err error
+		iserror := false
+		err = json.Unmarshal(jreq.Params, &reg)
+		if err == nil {
+			if errCookieJwt == nil {
+				reg.JWT = cookieJwt
+			}
+			var validuser *auth.Claims
+			validuser, err = r.userController.ValidateToken(reg.JWT)
+			expiresAt := time.Unix(validuser.ExpiresAt, 0)
+			//check if token has been expired more than duration
+			if time.Now().Add(time.Hour * 12).After(expiresAt) {
+				if validuser != nil && validuser.GetUID() == reg.UID {
+					res, e, code := r.userController.FindUserById(reg.UID, validuser.GetCode())
+					if e == nil {
+						res.JWT, _ = auth.CreateJWTToken(reg.UID, res.Username, validuser.GetCode())
+					}
+					res = CheckAllowCredentials(ctx, res, code)
+					jres.Result, _ = utils.ToRawMessage(res)
+					jres.Error = e
+					statuscode = code
+				} else {
+					iserror = true
+				}
+			} else {
+				iserror = true
+			}
+		} else {
+			iserror = true
+		}
+
+		if iserror {
+			statuscode = http.StatusBadRequest
+			jres.Error = &jsonrpc2.RPCError{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+			}
+		}
+
 	case "Register":
 		var reg *CreateUserRequest
 		err := json.Unmarshal(jreq.Params, &reg)
@@ -147,11 +188,11 @@ func (r *UserRouteController) RPCHandle(ctx *gin.Context) {
 		var reg *ConfirmRegCode
 		iserror := false
 		err := json.Unmarshal(jreq.Params, &reg)
-		var validuser *auth.Claims
 		if err == nil {
 			if errCookieJwt == nil {
 				reg.JWT = cookieJwt
 			}
+			var validuser *auth.Claims
 			validuser, err = r.userController.ValidateToken(reg.JWT)
 			if err == nil && validuser.GetUID() == reg.UID {
 				res, e, code := r.userController.ConfirmRegistration(reg)
@@ -177,11 +218,11 @@ func (r *UserRouteController) RPCHandle(ctx *gin.Context) {
 		var reg *GetUserRequest
 		iserror := false
 		err := json.Unmarshal(jreq.Params, &reg)
-		var validuser *auth.Claims
 		if err == nil {
 			if errCookieJwt == nil {
 				reg.JWT = cookieJwt
 			}
+			var validuser *auth.Claims
 			validuser, err = r.userController.ValidateToken(reg.JWT)
 			if err == nil && validuser.GetUID() == reg.UID {
 				res, e, code := r.userController.ResendCode(reg)
@@ -256,11 +297,11 @@ func (r *UserRouteController) RPCHandle(ctx *gin.Context) {
 		var reg *GetUserRequest
 		iserror := false
 		err := json.Unmarshal(jreq.Params, &reg)
-		var validuser *auth.Claims
 		if err == nil {
 			if errCookieJwt == nil {
 				reg.JWT = cookieJwt
 			}
+			var validuser *auth.Claims
 			validuser, err = r.userController.ValidateToken(reg.JWT)
 			if err == nil && validuser.GetUID() == reg.UID {
 				res, e, code := r.userController.FindUserById(reg.UID, validuser.GetCode())

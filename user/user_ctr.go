@@ -31,9 +31,9 @@ func SendCodeEmail(email string, code *Registration) {
 	}
 }
 
-func (uc *UserController) Register(user *CreateUserRequest) (*ResponseUser, *jsonrpc2.RPCError, int) {
+func (uc *UserController) Register(regUser *CreateUserRequest) (*ResponseUser, *jsonrpc2.RPCError, int) {
 	if Logger.V(2).Enabled() {
-		jsonBytes, err := json.Marshal(user)
+		jsonBytes, err := json.Marshal(regUser)
 		if err == nil {
 			Logger.V(2).Info(fmt.Sprintf("register %s", string(jsonBytes)))
 		}
@@ -41,31 +41,33 @@ func (uc *UserController) Register(user *CreateUserRequest) (*ResponseUser, *jso
 
 	errres := make([]*jsonrpc2.InputFieldError, 0, 4)
 
-	_, err := utils.IsValidName(user.Name)
+	_, err := utils.IsValidName(regUser.Name)
 	if err != nil {
 		errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "name"})
 	}
 
-	_, err = utils.IsValidUsername(user.Username)
+	regUser.Username = strings.ToLower(regUser.Username)
+	_, err = utils.IsValidUsername(regUser.Username)
 	if err != nil {
 		errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "username"})
 	} else {
-		exist, _ := uc.userService.FindUserByUsername(user.Username)
+		exist, _ := uc.userService.FindUserByUsername(regUser.Username)
 		if exist != nil {
 			errres = append(errres, &jsonrpc2.InputFieldError{Error: "username unavailable", Field: "username"})
 		}
 	}
 
-	_, err = utils.IsValidPassword(user.Password)
+	_, err = utils.IsValidPassword(regUser.Password)
 	if err != nil {
 		errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "password"})
 	}
 
-	ok := utils.IsValidEmail(user.Email)
+	regUser.Email = strings.ToLower(regUser.Email)
+	ok := utils.IsValidEmail(regUser.Email)
 	if !ok {
 		errres = append(errres, &jsonrpc2.InputFieldError{Error: "email invalid", Field: "email"})
 	} else {
-		exist, _ := uc.userService.FindUserByEmail(user.Email)
+		exist, _ := uc.userService.FindUserByEmail(regUser.Email)
 		if exist != nil {
 			errres = append(errres, &jsonrpc2.InputFieldError{Error: "email already registered", Field: "email"})
 		}
@@ -86,9 +88,9 @@ func (uc *UserController) Register(user *CreateUserRequest) (*ResponseUser, *jso
 	password, _ := auth.GeneratePassword("password")
 	nu := &CreateUser{
 		UID:      uuid.New().String(),
-		Name:     user.Name,
-		Username: user.Username,
-		Email:    user.Email,
+		Name:     regUser.Name,
+		Username: regUser.Username,
+		Email:    regUser.Email,
 		Password: password,
 		Reg: &Registration{
 			Registered: false,
@@ -187,6 +189,7 @@ func (uc *UserController) ResetPassword(uid, newPassword, code string) (*Respons
 func (uc *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("forgot password prosedure for %s", req.Email))
 
+	req.Email = strings.ToLower(req.Email)
 	var errres []*jsonrpc2.InputFieldError
 	if isemail := utils.IsValidEmail(req.Email); !isemail {
 		errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid email format", Field: "email"})
@@ -213,7 +216,7 @@ func (uc *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus
 		return nil, &jsonrpc2.RPCError{Code: http.StatusTooManyRequests, Message: fmt.Sprintf("please try again after %.1f seconds", 50.0-delta.Seconds())}, http.StatusOK
 	}
 
-	jwt, err := auth.CreateJWTWithExpire(user.UID, user.Username, "ResetPassword", code, auth.AnHour)
+	jwt, err := auth.CreateJWTWithExpire(user.UID, user.Username, "ResetPassword", code, time.Hour*1)
 	if err != nil {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: "server busy"}, http.StatusOK
 	}
@@ -229,7 +232,7 @@ func (uc *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus
 
 	user.Reg.SendCodeAt = time.Now()
 	user.Reg.Code = code
-	user, err = uc.userService.UpdateUser(user.Id, user)
+	_, err = uc.userService.UpdateUser(user.Id, user)
 	if err != nil {
 		Logger.Error(err, "internal error, while update user in ForgotPassword")
 	}
@@ -326,10 +329,11 @@ func (uc *UserController) ConfirmRegistration(confirm *ConfirmRegCode) (*Respons
 
 func (uc *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("Login attempt from %s", login.Username))
-	//todo send error params for field input
+
 	var user *DBUser
 	var err error
 	var errres []*jsonrpc2.InputFieldError
+	login.Username = strings.ToLower(login.Username)
 	if isemail := utils.IsValidEmail(login.Username); isemail {
 		Logger.V(2).Info("login with email")
 		user, err = uc.userService.FindUserByEmail(login.Username)
@@ -378,14 +382,10 @@ func (uc *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCE
 
 func (uc *UserController) ValidateToken(jwt string) (*auth.Claims, error) {
 	if len(jwt) >= 1 {
-		user, err := auth.ValidateToken(jwt)
-		if err != nil {
-			return nil, err
-		} else {
-			return user, nil
-		}
+		claim, err := auth.ValidateToken(jwt)
+		return claim, err
 	} else {
-		return nil, errors.New("invalid token")
+		return nil, errors.New("jwt can't empty")
 	}
 }
 
