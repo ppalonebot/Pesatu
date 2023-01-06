@@ -19,7 +19,7 @@ type I_UserRepo interface {
 	FindUserByUsername(string) (*DBUser, error)
 	FindUserByEmail(string) (*DBUser, error)
 	FindUsers(page int, limit int) ([]*DBUser, error)
-	DeleteUser(string) error
+	DeleteUser(primitive.ObjectID) error
 }
 
 type UserService struct {
@@ -31,11 +31,11 @@ func NewUserService(userCollection *mongo.Collection, ctx context.Context) I_Use
 	return &UserService{userCollection, ctx}
 }
 
-func (usr *UserService) CreateUser(user *CreateUser) (*DBUser, error) {
+func (me *UserService) CreateUser(user *CreateUser) (*DBUser, error) {
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = user.CreatedAt
 
-	res, err := usr.userCollection.InsertOne(usr.ctx, user)
+	res, err := me.userCollection.InsertOne(me.ctx, user)
 	if err != nil {
 		if er, ok := err.(mongo.WriteException); ok && er.WriteErrors[0].Code == 11000 {
 			return nil, errors.New("uid already exists")
@@ -48,20 +48,20 @@ func (usr *UserService) CreateUser(user *CreateUser) (*DBUser, error) {
 
 	index := mongo.IndexModel{Keys: bson.M{"uid": 1}, Options: opt}
 
-	if _, err := usr.userCollection.Indexes().CreateOne(usr.ctx, index); err != nil {
+	if _, err := me.userCollection.Indexes().CreateOne(me.ctx, index); err != nil {
 		return nil, err
 	}
 
 	var newUser *DBUser
 	query := bson.M{"_id": res.InsertedID}
-	if err = usr.userCollection.FindOne(usr.ctx, query).Decode(&newUser); err != nil {
+	if err = me.userCollection.FindOne(me.ctx, query).Decode(&newUser); err != nil {
 		return nil, err
 	}
 
 	return newUser, nil
 }
 
-func (usr *UserService) UpdateUser(obId primitive.ObjectID, user *DBUser) (*DBUser, error) {
+func (me *UserService) UpdateUser(obId primitive.ObjectID, user *DBUser) (*DBUser, error) {
 	user.UpdatedAt = time.Now()
 	doc, err := utils.ToDoc(user)
 	if err != nil {
@@ -71,7 +71,7 @@ func (usr *UserService) UpdateUser(obId primitive.ObjectID, user *DBUser) (*DBUs
 	// obId, _ := primitive.ObjectIDFromHex(id)
 	query := bson.D{{Key: "_id", Value: obId}}
 	update := bson.D{{Key: "$set", Value: doc}}
-	res := usr.userCollection.FindOneAndUpdate(usr.ctx, query, update, options.FindOneAndUpdate().SetReturnDocument(1))
+	res := me.userCollection.FindOneAndUpdate(me.ctx, query, update, options.FindOneAndUpdate().SetReturnDocument(1))
 
 	var updatedUser *DBUser
 
@@ -82,12 +82,12 @@ func (usr *UserService) UpdateUser(obId primitive.ObjectID, user *DBUser) (*DBUs
 	return updatedUser, nil
 }
 
-func (usr *UserService) FindUserById(uid string) (*DBUser, error) {
+func (me *UserService) FindUserById(uid string) (*DBUser, error) {
 	query := bson.M{"uid": uid}
 
 	var user *DBUser
 
-	if err := usr.userCollection.FindOne(usr.ctx, query).Decode(&user); err != nil {
+	if err := me.userCollection.FindOne(me.ctx, query).Decode(&user); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, errors.New("no document with that UID exists")
 		}
@@ -97,12 +97,12 @@ func (usr *UserService) FindUserById(uid string) (*DBUser, error) {
 	return user, nil
 }
 
-func (usr *UserService) FindUserByUsername(username string) (*DBUser, error) {
+func (me *UserService) FindUserByUsername(username string) (*DBUser, error) {
 	query := bson.M{"username": username}
 
 	var user *DBUser
 
-	if err := usr.userCollection.FindOne(usr.ctx, query).Decode(&user); err != nil {
+	if err := me.userCollection.FindOne(me.ctx, query).Decode(&user); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, errors.New("user unavailable")
 		}
@@ -112,12 +112,12 @@ func (usr *UserService) FindUserByUsername(username string) (*DBUser, error) {
 	return user, nil
 }
 
-func (usr *UserService) FindUserByEmail(email string) (*DBUser, error) {
+func (me *UserService) FindUserByEmail(email string) (*DBUser, error) {
 	query := bson.M{"email": email}
 
 	var user *DBUser
 
-	if err := usr.userCollection.FindOne(usr.ctx, query).Decode(&user); err != nil {
+	if err := me.userCollection.FindOne(me.ctx, query).Decode(&user); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, errors.New("user email unavailable")
 		}
@@ -127,7 +127,7 @@ func (usr *UserService) FindUserByEmail(email string) (*DBUser, error) {
 	return user, nil
 }
 
-func (usr *UserService) FindUsers(page int, limit int) ([]*DBUser, error) {
+func (me *UserService) FindUsers(page int, limit int) ([]*DBUser, error) {
 	if page == 0 {
 		page = 1
 	}
@@ -144,16 +144,16 @@ func (usr *UserService) FindUsers(page int, limit int) ([]*DBUser, error) {
 
 	query := bson.M{}
 
-	cursor, err := usr.userCollection.Find(usr.ctx, query, &opt)
+	cursor, err := me.userCollection.Find(me.ctx, query, &opt)
 	if err != nil {
 		return nil, err
 	}
 
-	defer cursor.Close(usr.ctx)
+	defer cursor.Close(me.ctx)
 
 	var users []*DBUser
 
-	for cursor.Next(usr.ctx) {
+	for cursor.Next(me.ctx) {
 		post := &DBUser{}
 		err := cursor.Decode(post)
 
@@ -175,11 +175,10 @@ func (usr *UserService) FindUsers(page int, limit int) ([]*DBUser, error) {
 	return users, nil
 }
 
-func (usr *UserService) DeleteUser(id string) error {
-	obId, _ := primitive.ObjectIDFromHex(id)
+func (me *UserService) DeleteUser(obId primitive.ObjectID) error {
 	query := bson.M{"_id": obId}
 
-	res, err := usr.userCollection.DeleteOne(usr.ctx, query)
+	res, err := me.userCollection.DeleteOne(me.ctx, query)
 	if err != nil {
 		return err
 	}

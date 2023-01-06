@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/asaskevich/govalidator"
@@ -57,12 +58,22 @@ func ToRawMessage(s interface{}) (json.RawMessage, error) {
 }
 
 func IsValidName(s string) (bool, error) {
+	sTrimmed := strings.TrimSpace(s)
+	if s != sTrimmed {
+		return false, errors.New("name needs to be trimmed")
+	}
+
 	if len(s) == 0 {
 		return false, errors.New("name can not empty")
 	}
 
 	if len(s) > 50 {
 		return false, errors.New("name to long, max 50 characters")
+	}
+
+	injected := ValidateLinkOrJS(s)
+	if injected {
+		return false, errors.New("invalid name")
 	}
 
 	return true, nil
@@ -92,6 +103,15 @@ func IsValidPassword(s string) (bool, error) {
 	return true, nil
 }
 
+func IsAlphaNumericLowcase(s string) bool {
+	match, err := regexp.MatchString(`^[a-z0-9]*$`, s)
+	if !match || err != nil {
+		return false
+	}
+
+	return true
+}
+
 func IsValidUsername(s string) (bool, error) {
 	if len(s) == 0 {
 		return false, errors.New("username can not empty")
@@ -103,6 +123,11 @@ func IsValidUsername(s string) (bool, error) {
 
 	if len(s) > 20 {
 		return false, errors.New("username to long, max 20 characters")
+	}
+
+	injected := ValidateLinkOrJS(s)
+	if injected {
+		return false, errors.New("invalid username")
 	}
 
 	match, err := regexp.MatchString(`^[a-z0-9][a-z0-9-_]*$`, s)
@@ -125,6 +150,27 @@ func IsValidUid(s string) bool {
 	return err == nil
 }
 
+func IsValidDate(date string) (bool, error) {
+	if len(date) == 0 {
+		return false, errors.New("input date can not empty")
+	}
+
+	_, err := time.Parse("2006/01/02", date)
+	return err == nil, err
+}
+
+func ValidateLinkOrJS(s string) bool {
+	// Use the regexp package to compile a regular expression for matching links and JavaScript
+	linkRegexp := regexp.MustCompile(`(http|ftp|https):\/\/([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&amp;:/~\+#]*[\w\-\@?^=%&amp;/~\+#])?`)
+	jsRegexp := regexp.MustCompile(`(?:<script.*>)(\n|\r|.)*?(?:<\/script>)`)
+
+	// Check if the string contains a link or JavaScript using the regular expression
+	if linkRegexp.MatchString(s) || jsRegexp.MatchString(s) {
+		return true
+	}
+	return false
+}
+
 func CopyStruct(src, dst interface{}) {
 	srcVal := reflect.ValueOf(src).Elem()
 	dstVal := reflect.ValueOf(dst).Elem()
@@ -141,7 +187,7 @@ func CopyStruct(src, dst interface{}) {
 	}
 }
 
-func GetTemplateData(file_html string) (*template.Template, error){
+func GetTemplateData(file_html string) (*template.Template, error) {
 	templateData, err := template.ParseFiles(fmt.Sprintf("../template/%s", file_html))
 	if err != nil {
 		// Get the current working directory

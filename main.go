@@ -5,8 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	"pesatu/upload"
 	"pesatu/user"
+	"strings"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -24,7 +28,7 @@ type logC struct {
 var (
 	server         *gin.Engine
 	ctx            context.Context
-	addr           string
+	Addr           string
 	verbosityLevel int
 	logConfig      logC
 	logger         = log.New()
@@ -39,7 +43,7 @@ func showHelp() {
 }
 
 func parse() bool {
-	flag.StringVar(&addr, "a", ":7000", "address to use")
+	flag.StringVar(&Addr, "a", ":7000", "address to use")
 	flag.IntVar(&verbosityLevel, "v", -1, "verbosity level, higher value - more logs")
 	help := flag.Bool("h", false, "help info")
 	flag.Parse()
@@ -64,11 +68,14 @@ func main() {
 	logger.Info(fmt.Sprintf("verbosity level is: %d", verbosityLevel))
 	log.SetGlobalOptions(log.GlobalConfig{V: verbosityLevel})
 
-	ctx = context.TODO()
+	//ctx = context.TODO()
+	// Set up context and options for connecting to MongoDB
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	// Connect to MongoDB
 	mongoconn := options.Client().ApplyURI("mongodb://root:example@mongo:27017")
-	mongoclient, err := mongo.NewClient(mongoconn) //mongo.Connect(ctx, mongoconn)
+	mongoclient, err := mongo.NewClient(mongoconn)
 	if err != nil {
 		panic(err)
 	}
@@ -77,6 +84,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer mongoclient.Disconnect(ctx)
 
 	if err := mongoclient.Ping(ctx, readpref.Primary()); err != nil {
 		panic(err)
@@ -96,19 +104,57 @@ func main() {
 	}))
 
 	// 👇 Add the Post Service, Controllers and Routes
-	UserRouteController := user.NewUserControllerRoute(mongoclient, ctx, logger, limiter)
+	UserRouteController := user.NewUserRoute(mongoclient, ctx, logger, limiter)
 	UserRouteController.InitRouteTo(server)
 
-	server.Static("/static", "./public/static")
-	server.Static("/m", "./public")
+	UploadImageRouteCtr := upload.NewUploadImageRoute(mongoclient, ctx, logger, limiter)
+	UploadImageRouteCtr.InitRouteTo(server)
+
 	server.GET("/", func(c *gin.Context) {
 		if limiter.TakeAvailable(1) == 0 {
 			c.AbortWithStatus(http.StatusTooManyRequests)
 			return
 		}
 
-		c.Redirect(http.StatusMovedPermanently, "/m/")
+		c.Redirect(http.StatusMovedPermanently, "/app/")
 	})
+	server.Static("/static", "./public/static")
+	server.Static("/app", "./public")
 
-	server.Run(addr)
+	// Use the redirectToAppMiddleware middleware to wrap the handler
+	server.Use(redirectToAppMiddleware())
+
+	server.Run(Addr)
+}
+
+func redirectToAppMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+
+		u, err := url.Parse(c.Request.URL.String())
+		if err != nil {
+			logger.Error(err, "redirectinging errror")
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+		// Get the path and query parameters from the original request
+		path := u.Path
+		if strings.Contains(path, ":") {
+			logger.Error(fmt.Errorf("path unsupported %s", path), "redirectinging errror")
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+
+		path = strings.TrimPrefix(path, "/")
+
+		params := c.Request.URL.Query()
+		queryString := params.Encode()
+		if queryString != "" {
+			queryString = "?" + queryString
+		}
+
+		// Construct the target URL using "/app/#" so it can be handled using FE
+		targetURL := "/app/#" + path + queryString
+		// Redirect to the target URL
+		c.Redirect(http.StatusMovedPermanently, targetURL)
+	}
 }

@@ -31,13 +31,8 @@ func SendCodeEmail(email string, code *Registration) {
 	}
 }
 
-func (uc *UserController) Register(regUser *CreateUserRequest) (*ResponseUser, *jsonrpc2.RPCError, int) {
-	if Logger.V(2).Enabled() {
-		jsonBytes, err := json.Marshal(regUser)
-		if err == nil {
-			Logger.V(2).Info(fmt.Sprintf("register %s", string(jsonBytes)))
-		}
-	}
+func (me *UserController) Register(regUser *CreateUserRequest) (*ResponseUser, *jsonrpc2.RPCError, int) {
+	Logger.V(2).Info(fmt.Sprintf("register %s", regUser.Username))
 
 	errres := make([]*jsonrpc2.InputFieldError, 0, 4)
 
@@ -51,7 +46,7 @@ func (uc *UserController) Register(regUser *CreateUserRequest) (*ResponseUser, *
 	if err != nil {
 		errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "username"})
 	} else {
-		exist, _ := uc.userService.FindUserByUsername(regUser.Username)
+		exist, _ := me.userService.FindUserByUsername(regUser.Username)
 		if exist != nil {
 			errres = append(errres, &jsonrpc2.InputFieldError{Error: "username unavailable", Field: "username"})
 		}
@@ -67,17 +62,13 @@ func (uc *UserController) Register(regUser *CreateUserRequest) (*ResponseUser, *
 	if !ok {
 		errres = append(errres, &jsonrpc2.InputFieldError{Error: "email invalid", Field: "email"})
 	} else {
-		exist, _ := uc.userService.FindUserByEmail(regUser.Email)
+		exist, _ := me.userService.FindUserByEmail(regUser.Email)
 		if exist != nil {
-			errres = append(errres, &jsonrpc2.InputFieldError{Error: "email already registered", Field: "email"})
+			errres = append(errres, &jsonrpc2.InputFieldError{Error: "email unavailable", Field: "email"})
 		}
 	}
 
 	if len(errres) > 0 {
-		// x, err := utils.ToRawMessage(errres)
-		// if err != nil {
-		// 	return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
-		// }
 		return nil, &jsonrpc2.RPCError{
 			Code:    http.StatusForbidden,
 			Message: "forbidden, invalid input",
@@ -99,7 +90,7 @@ func (uc *UserController) Register(regUser *CreateUserRequest) (*ResponseUser, *
 		},
 	}
 
-	newUser, err := uc.userService.CreateUser(nu)
+	newUser, err := me.userService.CreateUser(nu)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
@@ -148,7 +139,7 @@ func (uc *UserController) Register(regUser *CreateUserRequest) (*ResponseUser, *
 //		ctx.JSON(http.StatusOK, gin.H{"status": "success", "data": updatedUser})
 //	}
 
-func (uc *UserController) ResetPassword(uid, newPassword, code string) (*ResponseStatus, *jsonrpc2.RPCError, int) {
+func (me *UserController) ResetPassword(uid, newPassword, code string) (*ResponseStatus, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("reset password %s", uid))
 
 	ok := utils.IsValidUid(uid)
@@ -161,7 +152,7 @@ func (uc *UserController) ResetPassword(uid, newPassword, code string) (*Respons
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
 	}
 
-	user, err := uc.userService.FindUserById(uid)
+	user, err := me.userService.FindUserById(uid)
 	if err != nil {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
 	}
@@ -177,7 +168,7 @@ func (uc *UserController) ResetPassword(uid, newPassword, code string) (*Respons
 		user.Reg.Code = utils.GenerateRandomNumber()
 	}
 
-	user, err = uc.userService.UpdateUser(user.Id, user)
+	user, err = me.userService.UpdateUser(user.Id, user)
 	if err != nil {
 		Logger.Error(err, "internal error, while update user in ResendCode")
 	}
@@ -186,7 +177,7 @@ func (uc *UserController) ResetPassword(uid, newPassword, code string) (*Respons
 	return &ResponseStatus{UID: user.UID, Status: "success"}, nil, http.StatusOK
 }
 
-func (uc *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus, *jsonrpc2.RPCError, int) {
+func (me *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("forgot password prosedure for %s", req.Email))
 
 	req.Email = strings.ToLower(req.Email)
@@ -196,7 +187,7 @@ func (uc *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus
 		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "email error", Params: errres}, http.StatusOK
 	}
 
-	user, err := uc.userService.FindUserByEmail(req.Email)
+	user, err := me.userService.FindUserByEmail(req.Email)
 	if err != nil {
 		errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "email"})
 		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error(), Params: errres}, http.StatusOK
@@ -232,7 +223,7 @@ func (uc *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus
 
 	user.Reg.SendCodeAt = time.Now()
 	user.Reg.Code = code
-	_, err = uc.userService.UpdateUser(user.Id, user)
+	_, err = me.userService.UpdateUser(user.Id, user)
 	if err != nil {
 		Logger.Error(err, "internal error, while update user in ForgotPassword")
 	}
@@ -241,7 +232,7 @@ func (uc *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus
 	return &ResponseStatus{UID: "", Status: "success"}, nil, http.StatusOK
 }
 
-func (uc *UserController) ResendCode(req *GetUserRequest) (*ResponseStatus, *jsonrpc2.RPCError, int) {
+func (me *UserController) ResendCode(req *GetUserRequest) (*ResponseStatus, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("resend code for %s", req.UID))
 
 	ok := utils.IsValidUid(req.UID)
@@ -252,7 +243,7 @@ func (uc *UserController) ResendCode(req *GetUserRequest) (*ResponseStatus, *jso
 		}, http.StatusOK
 	}
 
-	user, err := uc.userService.FindUserById(req.UID)
+	user, err := me.userService.FindUserById(req.UID)
 	if err != nil {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
 	}
@@ -269,7 +260,7 @@ func (uc *UserController) ResendCode(req *GetUserRequest) (*ResponseStatus, *jso
 
 	go SendCodeEmail(user.Email, user.Reg)
 	user.Reg.SendCodeAt = time.Now()
-	user, err = uc.userService.UpdateUser(user.Id, user)
+	user, err = me.userService.UpdateUser(user.Id, user)
 	if err != nil {
 		Logger.Error(err, "internal error, while update user in ResendCode")
 	}
@@ -278,7 +269,7 @@ func (uc *UserController) ResendCode(req *GetUserRequest) (*ResponseStatus, *jso
 	return &ResponseStatus{UID: user.UID, Status: "success"}, nil, http.StatusOK
 }
 
-func (uc *UserController) ConfirmRegistration(confirm *ConfirmRegCode) (*ResponseUser, *jsonrpc2.RPCError, int) {
+func (me *UserController) ConfirmRegistration(confirm *ConfirmRegCode) (*ResponseUser, *jsonrpc2.RPCError, int) {
 	if Logger.V(2).Enabled() {
 		jsonBytes, err := json.Marshal(confirm)
 		if err == nil {
@@ -299,7 +290,7 @@ func (uc *UserController) ConfirmRegistration(confirm *ConfirmRegCode) (*Respons
 		}, http.StatusOK
 	}
 
-	user, err := uc.userService.FindUserById(confirm.UID)
+	user, err := me.userService.FindUserById(confirm.UID)
 	if err != nil {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
 	}
@@ -310,7 +301,7 @@ func (uc *UserController) ConfirmRegistration(confirm *ConfirmRegCode) (*Respons
 
 	if user.Reg.Code == confirm.Code {
 		user.Reg.Registered = true
-		user, err = uc.userService.UpdateUser(user.Id, user)
+		user, err = me.userService.UpdateUser(user.Id, user)
 		if err != nil {
 			return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
 		}
@@ -327,7 +318,7 @@ func (uc *UserController) ConfirmRegistration(confirm *ConfirmRegCode) (*Respons
 
 }
 
-func (uc *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCError, int) {
+func (me *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("Login attempt from %s", login.Username))
 
 	var user *DBUser
@@ -336,7 +327,7 @@ func (uc *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCE
 	login.Username = strings.ToLower(login.Username)
 	if isemail := utils.IsValidEmail(login.Username); isemail {
 		Logger.V(2).Info("login with email")
-		user, err = uc.userService.FindUserByEmail(login.Username)
+		user, err = me.userService.FindUserByEmail(login.Username)
 	} else {
 		Logger.V(2).Info("login with username")
 		_, err = utils.IsValidUsername(login.Username)
@@ -344,7 +335,7 @@ func (uc *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCE
 			errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "username"})
 			return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error(), Params: errres}, http.StatusOK
 		}
-		user, err = uc.userService.FindUserByUsername(login.Username)
+		user, err = me.userService.FindUserByUsername(login.Username)
 	}
 
 	if err != nil {
@@ -380,7 +371,7 @@ func (uc *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCE
 	return &resUser, nil, http.StatusOK
 }
 
-func (uc *UserController) ValidateToken(jwt string) (*auth.Claims, error) {
+func (me *UserController) ValidateToken(jwt string) (*auth.Claims, error) {
 	if len(jwt) >= 1 {
 		claim, err := auth.ValidateToken(jwt)
 		return claim, err
@@ -389,7 +380,7 @@ func (uc *UserController) ValidateToken(jwt string) (*auth.Claims, error) {
 	}
 }
 
-func (uc *UserController) FindUserById(userUID, code string) (*ResponseUser, *jsonrpc2.RPCError, int) {
+func (me *UserController) FindUserById(userUID, code string) (*ResponseUser, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("find a user by uid %s", userUID))
 
 	ok := utils.IsValidUid(userUID)
@@ -400,7 +391,7 @@ func (uc *UserController) FindUserById(userUID, code string) (*ResponseUser, *js
 		}, http.StatusOK
 	}
 
-	user, err := uc.userService.FindUserById(userUID)
+	user, err := me.userService.FindUserById(userUID)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "exists") {

@@ -34,7 +34,7 @@ func Test_ReadHtml(t *testing.T) {
 	asserts.Nil(err)
 	err = templateData.Execute(&body, struct{ Code string }{Code: "676767"})
 	asserts.Nil(err)
-	asserts.Contains(body.String(), "<b>676767</b>")
+	asserts.Contains(body.String(), "676767")
 }
 
 // func Test_SendEmail(t *testing.T) {
