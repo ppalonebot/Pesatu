@@ -9,18 +9,22 @@ import (
 	"pesatu/utils"
 	"strings"
 	"time"
+
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/gridfs"
 )
 
 type ProfileController struct {
 	userService    user.I_UserRepo
 	profileService I_ProfileRepo
+	mongoCli       *mongo.Client
 }
 
-func NewProfileController(userService user.I_UserRepo, profileService I_ProfileRepo) ProfileController {
-	return ProfileController{userService, profileService}
+func NewProfileController(userService user.I_UserRepo, profileService I_ProfileRepo, mongoCli *mongo.Client) ProfileController {
+	return ProfileController{userService, profileService, mongoCli}
 }
 
-func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update UpdateUserProfile) (*ResponseUserProfile, *jsonrpc2.RPCError, int) {
+func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *UpdateUserProfile) (*ResponseUserProfile, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("update my profile %s", update.UID))
 
 	if validuser.GetUID() != update.UID {
@@ -119,6 +123,17 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update Upda
 			ok = utils.IsAlphaNumericLowcase(update.PPic)
 			if !ok {
 				errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid input ppic", Field: "ppic"})
+			} else {
+				//delete old
+				if len(profile.PPic) > 0 {
+					// Create a new GridFS bucket
+					db := me.mongoCli.Database("pesatu")
+					gridfsBucket, err := gridfs.NewBucket(db)
+					if err == nil {
+						// Delete image from GridFS bucket
+						_ = gridfsBucket.Delete(profile.PPic)
+					}
+				}
 			}
 		}
 	}

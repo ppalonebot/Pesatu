@@ -66,15 +66,15 @@ func CheckAllowCredentials(ctx *gin.Context, res *ResponseUser, code int) *Respo
 	return res
 }
 
-func (this *UserRoute) InitRouteTo(rg *gin.Engine) {
+func (me *UserRoute) InitRouteTo(rg *gin.Engine) {
 	router := rg.Group("/usr")
-	router.POST("/rpc", this.RateLimit, this.RPCHandle)
-	router.GET("/resetpwd", this.RateLimit, this.ResetPwdHandler)
+	router.POST("/rpc", me.RateLimit, me.RPCHandle)
+	router.GET("/resetpwd", me.RateLimit, me.ResetPwdHandler)
 }
 
-func (this *UserRoute) RateLimit(ctx *gin.Context) {
+func (me *UserRoute) RateLimit(ctx *gin.Context) {
 	// Check if the request is allowed by the rate limiter
-	if this.limiter.TakeAvailable(1) == 0 {
+	if me.limiter.TakeAvailable(1) == 0 {
 		// The request is not allowed, so return an error
 		ctx.AbortWithStatus(http.StatusTooManyRequests)
 		return
@@ -82,7 +82,7 @@ func (this *UserRoute) RateLimit(ctx *gin.Context) {
 	ctx.Next()
 }
 
-func (this *UserRoute) ResetPwdHandler(c *gin.Context) {
+func (me *UserRoute) ResetPwdHandler(c *gin.Context) {
 	// Parse the template file
 	t, err := utils.GetTemplateData("resetpassword.html")
 	if err != nil {
@@ -94,7 +94,7 @@ func (this *UserRoute) ResetPwdHandler(c *gin.Context) {
 	t.Execute(c.Writer, nil)
 }
 
-func (this *UserRoute) RPCHandle(ctx *gin.Context) {
+func (me *UserRoute) RPCHandle(ctx *gin.Context) {
 	cookieJwt, errCookieJwt := ctx.Cookie("jwt")
 	statuscode := http.StatusBadRequest
 	var jreq jsonrpc2.RPCRequest
@@ -121,7 +121,7 @@ func (this *UserRoute) RPCHandle(ctx *gin.Context) {
 				Message: err.Error(),
 			}
 		} else {
-			res, e, code := this.userController.UserLogin(login)
+			res, e, code := me.userController.UserLogin(login)
 			res = CheckAllowCredentials(ctx, res, code)
 			jres.Result, _ = utils.ToRawMessage(res)
 			jres.Error = e
@@ -137,12 +137,12 @@ func (this *UserRoute) RPCHandle(ctx *gin.Context) {
 				reg.JWT = cookieJwt
 			}
 			var validuser *auth.Claims
-			validuser, err = this.userController.ValidateToken(reg.JWT)
+			validuser, err = me.userController.ValidateToken(reg.JWT)
 			expiresAt := time.Unix(validuser.ExpiresAt, 0)
 			//check if token has been expired more than duration
 			if time.Now().Add(time.Hour * 12).After(expiresAt) {
 				if validuser != nil && validuser.GetUID() == reg.UID {
-					res, e, code := this.userController.FindUserById(reg.UID, validuser.GetCode())
+					res, e, code := me.userController.FindUserById(reg.UID, validuser.GetCode())
 					if e == nil {
 						res.JWT, _ = auth.CreateJWTToken(reg.UID, res.Username, validuser.GetCode())
 					}
@@ -178,7 +178,7 @@ func (this *UserRoute) RPCHandle(ctx *gin.Context) {
 				Message: err.Error(),
 			}
 		} else {
-			res, e, code := this.userController.Register(reg)
+			res, e, code := me.userController.Register(reg)
 			res = CheckAllowCredentials(ctx, res, code)
 			jres.Result, _ = utils.ToRawMessage(res)
 			jres.Error = e
@@ -193,9 +193,9 @@ func (this *UserRoute) RPCHandle(ctx *gin.Context) {
 				reg.JWT = cookieJwt
 			}
 			var validuser *auth.Claims
-			validuser, err = this.userController.ValidateToken(reg.JWT)
+			validuser, err = me.userController.ValidateToken(reg.JWT)
 			if err == nil && validuser.GetUID() == reg.UID {
-				res, e, code := this.userController.ConfirmRegistration(reg)
+				res, e, code := me.userController.ConfirmRegistration(reg)
 				jres.Result, _ = utils.ToRawMessage(res)
 				jres.Error = e
 				statuscode = code
@@ -223,9 +223,9 @@ func (this *UserRoute) RPCHandle(ctx *gin.Context) {
 				reg.JWT = cookieJwt
 			}
 			var validuser *auth.Claims
-			validuser, err = this.userController.ValidateToken(reg.JWT)
+			validuser, err = me.userController.ValidateToken(reg.JWT)
 			if err == nil && validuser.GetUID() == reg.UID {
-				res, e, code := this.userController.ResendCode(reg)
+				res, e, code := me.userController.ResendCode(reg)
 				jres.Result, _ = utils.ToRawMessage(res)
 				jres.Error = e
 				statuscode = code
@@ -248,7 +248,7 @@ func (this *UserRoute) RPCHandle(ctx *gin.Context) {
 		var reg *ForgotPwdRequest
 		err := json.Unmarshal(jreq.Params, &reg)
 		if err == nil {
-			res, e, code := this.userController.ForgotPassword(reg)
+			res, e, code := me.userController.ForgotPassword(reg)
 			jres.Result, _ = utils.ToRawMessage(res)
 			jres.Error = e
 			statuscode = code
@@ -267,10 +267,10 @@ func (this *UserRoute) RPCHandle(ctx *gin.Context) {
 		err = json.Unmarshal(jreq.Params, &reg)
 		if err == nil {
 			var validuser *auth.Claims
-			validuser, err = this.userController.ValidateToken(reg.JWT)
+			validuser, err = me.userController.ValidateToken(reg.JWT)
 			if err == nil {
 				if validuser.GetCmd() == "ResetPassword" {
-					res, e, code := this.userController.ResetPassword(validuser.GetUID(), reg.Password, validuser.GetCode())
+					res, e, code := me.userController.ResetPassword(validuser.GetUID(), reg.Password, validuser.GetCode())
 					jres.Result, _ = utils.ToRawMessage(res)
 					jres.Error = e
 					statuscode = code
@@ -302,9 +302,9 @@ func (this *UserRoute) RPCHandle(ctx *gin.Context) {
 				reg.JWT = cookieJwt
 			}
 			var validuser *auth.Claims
-			validuser, err = this.userController.ValidateToken(reg.JWT)
+			validuser, err = me.userController.ValidateToken(reg.JWT)
 			if err == nil && validuser.GetUID() == reg.UID {
-				res, e, code := this.userController.FindUserById(reg.UID, validuser.GetCode())
+				res, e, code := me.userController.FindUserById(reg.UID, validuser.GetCode())
 				jres.Result, _ = utils.ToRawMessage(res)
 				jres.Error = e
 				statuscode = code

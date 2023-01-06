@@ -6,6 +6,10 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+type GetProfileRequest struct {
+	UID string `json:"uid"`
+	JWT string `json:"jwt"`
+}
 type UpdateUserProfile struct {
 	UID      string `json:"uid"`
 	Name     string `json:"name"`
@@ -14,6 +18,7 @@ type UpdateUserProfile struct {
 	Status   string `json:"status"`
 	Bio      string `json:"bio"`
 	PPic     string `json:"ppic"`
+	JWT      string `json:"jwt"`
 }
 
 type ResponseUserProfile struct {
