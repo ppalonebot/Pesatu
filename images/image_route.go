@@ -1,4 +1,4 @@
-package upload
+package images
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/gridfs"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var Logger logr.Logger = logr.Discard()
@@ -69,8 +70,23 @@ func (me *UploadImageRoute) InitRouteTo(rg *gin.Engine) {
 
 		// Generate a unique ID for the image
 		imageID := primitive.NewObjectID()
+
+		// Save image metadata to separate collection
+		imageMetadata := bson.M{
+			"filename":     imageID.Hex(),
+			"upload_date":  time.Now(),
+			"content_type": file.Header.Get("Content-Type"),
+		}
+
+		// imageCollection := db.Collection("images")
+		// _, err = imageCollection.InsertOne(me.ctx, imageMetadata)
+		// if err != nil {
+		// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving image metadata: " + err.Error()})
+		// 	return
+		// }
+
 		// Save image to GridFS bucket using unique ID as filename
-		uploadStream, err := gridfsBucket.OpenUploadStreamWithID(imageID, imageID.Hex())
+		uploadStream, err := gridfsBucket.OpenUploadStreamWithID(imageID, imageID.Hex(), options.GridFSUpload().SetMetadata(imageMetadata))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving image to GridFS bucket: " + err.Error()})
 			return
@@ -80,21 +96,6 @@ func (me *UploadImageRoute) InitRouteTo(rg *gin.Engine) {
 		_, err = io.Copy(uploadStream, src)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error copying image to GridFS bucket: " + err.Error()})
-			return
-		}
-
-		// Save image metadata to separate collection
-		imageMetadata := bson.M{
-			"_id":          imageID,
-			"filename":     imageID.Hex(),
-			"upload_date":  time.Now(),
-			"content_type": file.Header.Get("Content-Type"),
-		}
-
-		imageCollection := db.Collection("images")
-		_, err = imageCollection.InsertOne(me.ctx, imageMetadata)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving image metadata: " + err.Error()})
 			return
 		}
 
@@ -123,21 +124,29 @@ func (me *UploadImageRoute) InitRouteTo(rg *gin.Engine) {
 
 		// Retrieve metadata about the file
 		file := downloadStream.GetFile()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting file metadata: " + err.Error()})
-			return
-		}
-
 		var metadata FileMetadata
 		err = bson.Unmarshal(file.Metadata, &metadata)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error unmarshalling metadata: " + err.Error()})
-			return
+		if err == nil {
+			// Set headers based on metadata
+			c.Header("Content-Type", metadata.ContentType)
+			c.Header("Content-Length", strconv.Itoa(int(file.Length)))
 		}
 
-		// Set headers based on metadata
-		c.Header("Content-Type", metadata.ContentType)
-		c.Header("Content-Length", strconv.Itoa(int(file.Length)))
+		if err != nil {
+			// Retrieve metadata about the file
+			cli := me.dbclient.Database("pesatu").Collection("images")
+			query := bson.M{"filename": imageID}
+			fileDB := cli.FindOne(me.ctx, query)
+			err = fileDB.Decode(&metadata)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error unmarshalling metadata: " + err.Error()})
+				return
+			}
+
+			// Set headers based on metadata
+			c.Header("Content-Type", metadata.ContentType)
+			c.Header("Content-Length", strconv.Itoa(int(downloadStream.GetFile().Length)))
+		}
 
 		// Send image as response to client
 		_, err = io.Copy(c.Writer, downloadStream)

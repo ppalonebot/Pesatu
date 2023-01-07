@@ -66,6 +66,10 @@ func ValidateToken(tokenString string) (*Claims, error) {
 		return []byte(hmacSecret), nil
 	})
 
+	if token == nil {
+		return nil, err
+	}
+
 	// Get the custom claims from the token
 	claims, ok := token.Claims.(*Claims)
 	if !ok || !token.Valid {

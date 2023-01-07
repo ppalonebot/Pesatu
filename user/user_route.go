@@ -56,6 +56,7 @@ func CheckAllowCredentials(ctx *gin.Context, res *ResponseUser, code int) *Respo
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
 				Expires:  time.Now().Add(25 * time.Hour),
+				Path:     "/",
 				// Domain: ".localhost",
 			})
 
@@ -80,6 +81,10 @@ func (me *UserRoute) RateLimit(ctx *gin.Context) {
 		return
 	}
 	ctx.Next()
+}
+
+func (me *UserRoute) GetUserService() I_UserRepo {
+	return me.userController.userService
 }
 
 func (me *UserRoute) ResetPwdHandler(c *gin.Context) {

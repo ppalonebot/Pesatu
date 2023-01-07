@@ -89,7 +89,10 @@ func (me *ProfileRoute) GetMyProfile(ctx *gin.Context, statuscode int, jreq *jso
 	err = json.Unmarshal(jreq.Params, &reg)
 	if err == nil {
 		if errCookieJwt == nil {
+			Logger.V(2).Info(fmt.Sprintf("use cookie token %s", cookieJwt))
 			reg.JWT = cookieJwt
+		} else {
+			Logger.V(2).Error(err, "token anavailable")
 		}
 		var validuser *auth.Claims
 		validuser, err = auth.ValidateToken(reg.JWT)

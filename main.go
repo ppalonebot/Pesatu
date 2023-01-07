@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"pesatu/upload"
+	"pesatu/images"
 	"pesatu/user"
+	"pesatu/userprofile"
 	"strings"
-	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -68,10 +68,10 @@ func main() {
 	logger.Info(fmt.Sprintf("verbosity level is: %d", verbosityLevel))
 	log.SetGlobalOptions(log.GlobalConfig{V: verbosityLevel})
 
-	//ctx = context.TODO()
-	// Set up context and options for connecting to MongoDB
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	ctx = context.TODO()
+	// // Set up context and options for connecting to MongoDB
+	// ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// defer cancel()
 
 	// Connect to MongoDB
 	mongoconn := options.Client().ApplyURI("mongodb://root:example@mongo:27017")
@@ -107,7 +107,10 @@ func main() {
 	UserRouteController := user.NewUserRoute(mongoclient, ctx, logger, limiter)
 	UserRouteController.InitRouteTo(server)
 
-	UploadImageRouteCtr := upload.NewUploadImageRoute(mongoclient, ctx, logger, limiter)
+	ProfileRouteController := userprofile.NewProfileRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
+	ProfileRouteController.InitRouteTo(server)
+
+	UploadImageRouteCtr := images.NewUploadImageRoute(mongoclient, ctx, logger, limiter)
 	UploadImageRouteCtr.InitRouteTo(server)
 
 	server.GET("/", func(c *gin.Context) {

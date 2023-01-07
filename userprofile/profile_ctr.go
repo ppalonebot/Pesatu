@@ -55,8 +55,9 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 		if strings.Contains(err.Error(), "exists") {
 			// return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
 			profile = nil
+		} else {
+			return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
 		}
-		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
 	}
 
 	errres := make([]*jsonrpc2.InputFieldError, 0, 6)
@@ -94,33 +95,33 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 		}
 	}
 
-	if update.Status != profile.Status {
+	if profile != nil && (update.Status != profile.Status) {
 		if len(update.Status) > 100 {
 			errres = append(errres, &jsonrpc2.InputFieldError{Error: "input status too long, max 100 chars", Field: "status"})
-		}
-
-		injected := utils.ValidateLinkOrJS(update.Status)
-		if injected {
-			errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid input status", Field: "status"})
+		} else {
+			injected := utils.ValidateLinkOrJS(update.Status)
+			if injected {
+				errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid input status", Field: "status"})
+			}
 		}
 	}
 
-	if update.Bio != profile.Bio {
+	if profile != nil && (update.Bio != profile.Bio) {
 		if len(update.Bio) > 500 {
 			errres = append(errres, &jsonrpc2.InputFieldError{Error: "input status too long, max 500 chars", Field: "bio"})
-		}
-
-		injected := utils.ValidateLinkOrJS(update.Bio)
-		if injected {
-			errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid input bio", Field: "bio"})
+		} else {
+			injected := utils.ValidateLinkOrJS(update.Bio)
+			if injected {
+				errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid input bio", Field: "bio"})
+			}
 		}
 	}
 
-	if update.PPic != profile.PPic {
-		if len(update.PPic) > 12 {
+	if profile != nil && (update.PPic != profile.PPic) {
+		if len(update.PPic) > 36 {
 			errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid ppic name", Field: "ppic"})
 		} else {
-			ok = utils.IsAlphaNumericLowcase(update.PPic)
+			ok = utils.IsAlphaNumericLowcase(update.PPic) || len(update.PPic) == 0
 			if !ok {
 				errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid input ppic", Field: "ppic"})
 			} else {
@@ -144,12 +145,12 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 
 	if profile == nil {
 		//create new profile
-		var p *CreateProfile
-		utils.CopyStruct(update, p)
+		var p CreateProfile
+		utils.CopyStruct(update, &p)
 		p.CreatedAt = time.Now()
 		p.UpdatedAt = p.CreatedAt
 		p.Owner = user.UID
-		profile, err = me.profileService.CreateProfile(p)
+		profile, err = me.profileService.CreateProfile(&p)
 		if err != nil {
 			Logger.Error(err, "internal error, while creating new profile")
 			return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
@@ -166,7 +167,11 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 	}
 
 	utils.CopyStruct(update, user)
-	user.Avatar = fmt.Sprintf("/image/%s", update.PPic)
+	if len(update.PPic) == 0 {
+		user.Avatar = ""
+	} else {
+		user.Avatar = fmt.Sprintf("/image/%s", update.PPic)
+	}
 	user.UpdatedAt = time.Now()
 	user, err = me.userService.UpdateUser(user.Id, user)
 	if err != nil {
@@ -174,13 +179,13 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
 	}
 
-	var resUserProfile *ResponseUserProfile
+	var resUserProfile ResponseUserProfile
 	utils.CopyStruct(user, &resUserProfile)
 	utils.CopyStruct(profile, &resUserProfile)
 	resUserProfile.IsRegistered = user.Reg.Registered
 
 	Logger.V(2).Info("update profile success")
-	return resUserProfile, nil, http.StatusCreated
+	return &resUserProfile, nil, http.StatusCreated
 }
 
 func (me *ProfileController) FindMyProfile(validuser *auth.Claims, owner string) (*ResponseUserProfile, *jsonrpc2.RPCError, int) {
@@ -214,15 +219,16 @@ func (me *ProfileController) FindMyProfile(validuser *auth.Claims, owner string)
 		if strings.Contains(err.Error(), "exists") {
 			//return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
 			profile = &DBProfile{}
+		} else {
+			return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
 		}
-		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
 	}
 
-	var resUserProfile *ResponseUserProfile
+	var resUserProfile ResponseUserProfile
 	utils.CopyStruct(user, &resUserProfile)
 	utils.CopyStruct(profile, &resUserProfile)
 	resUserProfile.IsRegistered = user.Reg.Registered
 
 	Logger.V(2).Info("found profile", user.Username)
-	return resUserProfile, nil, http.StatusOK
+	return &resUserProfile, nil, http.StatusOK
 }
