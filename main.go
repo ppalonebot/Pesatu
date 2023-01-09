@@ -103,16 +103,6 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// 👇 Add the Post Service, Controllers and Routes
-	UserRouteController := user.NewUserRoute(mongoclient, ctx, logger, limiter)
-	UserRouteController.InitRouteTo(server)
-
-	ProfileRouteController := userprofile.NewProfileRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
-	ProfileRouteController.InitRouteTo(server)
-
-	UploadImageRouteCtr := images.NewUploadImageRoute(mongoclient, ctx, logger, limiter)
-	UploadImageRouteCtr.InitRouteTo(server)
-
 	server.GET("/", func(c *gin.Context) {
 		if limiter.TakeAvailable(1) == 0 {
 			c.AbortWithStatus(http.StatusTooManyRequests)
@@ -123,6 +113,15 @@ func main() {
 	})
 	server.Static("/static", "./public/static")
 	server.Static("/app", "./public")
+
+	UserRouteController := user.NewUserRoute(mongoclient, ctx, logger, limiter)
+	UserRouteController.InitRouteTo(server)
+
+	UploadImageRouteCtr := images.NewUploadImageRoute(mongoclient, ctx, logger, limiter)
+	UploadImageRouteCtr.InitRouteTo(server)
+
+	ProfileRouteController := userprofile.NewProfileRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
+	ProfileRouteController.InitRouteTo(server)
 
 	// Use the redirectToAppMiddleware middleware to wrap the handler
 	server.Use(redirectToAppMiddleware())
@@ -139,6 +138,7 @@ func redirectToAppMiddleware() gin.HandlerFunc {
 			c.AbortWithStatus(http.StatusNotFound)
 			return
 		}
+
 		// Get the path and query parameters from the original request
 		path := u.Path
 		if strings.Contains(path, ":") {

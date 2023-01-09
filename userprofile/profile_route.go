@@ -3,7 +3,6 @@ package userprofile
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"pesatu/auth"
@@ -34,7 +33,7 @@ func NewProfileRoute(mongoclient *mongo.Client, ctx context.Context, l logr.Logg
 }
 
 func (me *ProfileRoute) InitRouteTo(rg *gin.Engine) {
-	router := rg.Group("/prf")
+	router := rg.Group("/prf").Use(auth.AuthMiddleware())
 	router.POST("/rpc", me.RateLimit, me.RPCHandle)
 }
 
@@ -49,109 +48,85 @@ func (me *ProfileRoute) RateLimit(ctx *gin.Context) {
 }
 
 func (me *ProfileRoute) RPCHandle(ctx *gin.Context) {
-	statuscode := http.StatusBadRequest
 	var jreq jsonrpc2.RPCRequest
 	if err := ctx.ShouldBindJSON(&jreq); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"status": "jsonrpc fail", "message": err.Error()})
 		return
-	} else {
-		Logger.V(2).Info(fmt.Sprintf("RPCHandle %s", jreq.Method))
 	}
+
+	Logger.V(2).Info(fmt.Sprintf("RPCHandle %s", jreq.Method))
 
 	jres := &jsonrpc2.RPCResponse{
 		JSONRPC: "2.0",
 		ID:      jreq.ID,
 	}
 
+	statuscode := http.StatusBadRequest
 	switch jreq.Method {
 	case "GetMyProfile":
-		statuscode = me.GetMyProfile(ctx, statuscode, &jreq, jres)
+		statuscode = me.method_GetMyProfile(ctx, &jreq, jres)
 	case "UpdateMyProfile":
-		statuscode = me.UpdateMyProfile(ctx, statuscode, &jreq, jres)
+		statuscode = me.method_UpdateMyProfile(ctx, &jreq, jres)
 	default:
-		jres.Error = &jsonrpc2.RPCError{
-			Code:    http.StatusMethodNotAllowed,
-			Message: "method not allowed",
-		}
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusMethodNotAllowed, Message: "method not allowed"}
 	}
 
 	if jres.Error != nil {
-		Logger.Error(errors.New(jres.Error.Message), "response with error")
+		Logger.Error(fmt.Errorf(jres.Error.Message), "response with error")
 	}
 	ctx.JSON(statuscode, jres)
 }
 
-func (me *ProfileRoute) GetMyProfile(ctx *gin.Context, statuscode int, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
-	cookieJwt, errCookieJwt := ctx.Cookie("jwt")
+func (me *ProfileRoute) method_GetMyProfile(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
 	var reg *GetProfileRequest
-	var err error
-	iserror := false
-	err = json.Unmarshal(jreq.Params, &reg)
-	if err == nil {
-		if errCookieJwt == nil {
-			Logger.V(2).Info(fmt.Sprintf("use cookie token %s", cookieJwt))
-			reg.JWT = cookieJwt
-		} else {
-			Logger.V(2).Error(err, "token anavailable")
-		}
-		var validuser *auth.Claims
-		validuser, err = auth.ValidateToken(reg.JWT)
-		if err == nil {
-			res, e, code := me.controller.FindMyProfile(validuser, reg.UID)
-			jres.Result, _ = utils.ToRawMessage(res)
-			jres.Error = e
-			statuscode = code
-
-		} else {
-			iserror = true
-		}
-	} else {
-		iserror = true
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
 	}
 
-	if iserror {
-		statuscode = http.StatusBadRequest
-		jres.Error = &jsonrpc2.RPCError{
-			Code:    http.StatusBadRequest,
-			Message: err.Error(),
-		}
+	validuser := vuser.(*auth.Claims)
+	if validuser.IsExpired() {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
 	}
 
-	return statuscode
+	res, e, code := me.controller.FindMyProfile(validuser, reg.UID)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
 }
 
-func (me *ProfileRoute) UpdateMyProfile(ctx *gin.Context, statuscode int, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
-	cookieJwt, errCookieJwt := ctx.Cookie("jwt")
+func (me *ProfileRoute) method_UpdateMyProfile(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
 	var reg *UpdateUserProfile
-	var err error
-	iserror := false
-	err = json.Unmarshal(jreq.Params, &reg)
-	if err == nil {
-		if errCookieJwt == nil {
-			reg.JWT = cookieJwt
-		}
-		var validuser *auth.Claims
-		validuser, err = auth.ValidateToken(reg.JWT)
-		if err == nil {
-			res, e, code := me.controller.UpdateMyProfile(validuser, reg)
-			jres.Result, _ = utils.ToRawMessage(res)
-			jres.Error = e
-			statuscode = code
-
-		} else {
-			iserror = true
-		}
-	} else {
-		iserror = true
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
 	}
 
-	if iserror {
-		statuscode = http.StatusBadRequest
-		jres.Error = &jsonrpc2.RPCError{
-			Code:    http.StatusBadRequest,
-			Message: err.Error(),
-		}
+	validuser := vuser.(*auth.Claims)
+	if validuser.IsExpired() {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
 	}
 
-	return statuscode
+	res, e, code := me.controller.UpdateMyProfile(validuser, reg)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
 }

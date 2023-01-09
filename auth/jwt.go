@@ -2,8 +2,10 @@ package auth
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
 )
 
@@ -32,6 +34,15 @@ func (c *Claims) GetCode() string {
 
 func (c *Claims) GetCmd() string {
 	return c.Cmd
+}
+
+func (c *Claims) IsExpired() bool {
+	expiresAt := time.Unix(c.ExpiresAt, 0)
+	if time.Now().After(expiresAt) {
+		return true //claims, fmt.Errorf("token expired")
+	}
+
+	return false
 }
 
 // CreateJWTToken generates a JWT signed token for for the given user id and username
@@ -76,11 +87,37 @@ func ValidateToken(tokenString string) (*Claims, error) {
 		return nil, err
 	}
 
-	// Check the expiration time
-	expiresAt := time.Unix(claims.ExpiresAt, 0)
-	if time.Now().After(expiresAt) {
-		return claims, fmt.Errorf("token expired")
-	}
+	//Check the expiration time
+	// expiresAt := time.Unix(claims.ExpiresAt, 0)
+	// if time.Now().After(expiresAt) {
+	// 	return nil, fmt.Errorf("token expired")
+	// }
 
 	return claims, nil
+}
+
+func AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var token string
+		parts := strings.Split(c.GetHeader("Authorization"), " ")
+		if len(parts) == 2 {
+			token = parts[1]
+		}
+
+		if len(token) == 0 {
+			token, _ = c.Cookie("jwt")
+		}
+
+		if len(token) == 0 {
+			c.Next()
+			return
+		}
+
+		validuser, _ := ValidateToken(token)
+		if validuser != nil {
+			c.Set("validuser", validuser)
+		}
+
+		c.Next()
+	}
 }

@@ -2,20 +2,14 @@ package images
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"pesatu/auth"
-	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-logr/logr"
 	"github.com/juju/ratelimit"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/gridfs"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var Logger logr.Logger = logr.Discard()
@@ -28,169 +22,54 @@ type FileMetadata struct {
 }
 
 type UploadImageRoute struct {
-	dbclient *mongo.Client
-	limiter  *ratelimit.Bucket
-	ctx      context.Context
+	controller ImageController
+	limiter    *ratelimit.Bucket
+	ctx        context.Context
 }
 
 func NewUploadImageRoute(mongoclient *mongo.Client, ctx context.Context, l logr.Logger, limiter *ratelimit.Bucket) UploadImageRoute {
 	Logger = l
 	Logger.V(2).Info("New Upload Image Route created")
-	return UploadImageRoute{mongoclient, limiter, ctx}
+	db := mongoclient.Database("pesatu")
+	gridfsBucket, err := gridfs.NewBucket(db)
+	if err != nil {
+		Logger.Error(err, "Error creating GridFS bucket")
+	}
+	service := NewImageService(gridfsBucket, ctx)
+	controller := NewImageController(service)
+	return UploadImageRoute{controller, limiter, ctx}
 }
 
 func (me *UploadImageRoute) InitRouteTo(rg *gin.Engine) {
-	router := rg.Group("/image")
-	router.POST("/upload", me.RateLimit, func(c *gin.Context) {
-		if c.Request.ContentLength > MAX_IMAGE_SIZE {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Image size exceeds maximum allowed, max 5MB"})
-			return
-		}
+	router := rg.Group("/image").Use(auth.AuthMiddleware())
+	router.POST("/upload", me.RateLimit, me.controller.ImageUploadHandler)
+	router.GET("/:id", me.RateLimit, me.controller.GetImageHandler)
 
-		// Retrieve uploaded image file
-		file, err := c.FormFile("image")
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Error retrieving image file: " + err.Error()})
-			return
-		}
+	// router.DELETE("/:id", me.RateLimit, func(c *gin.Context) {
+	// 	vuser, ok := c.Get("validuser")
+	// 	if !ok {
+	// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+	// 		return
+	// 	}
 
-		src, err := file.Open()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error opening image file: " + err.Error()})
-			return
-		}
-		defer src.Close()
+	// 	validuser := vuser.(*auth.Claims)
+	// 	if validuser.IsExpired() {
+	// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "session expired"})
+	// 		return
+	// 	}
 
-		db := me.dbclient.Database("pesatu")
-		gridfsBucket, err := gridfs.NewBucket(db)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating GridFS bucket: " + err.Error()})
-			return
-		}
+	// 	// Retrieve image ID from request parameters
+	// 	imageID := c.Param("id")
 
-		// Generate a unique ID for the image
-		imageID := primitive.NewObjectID()
+	// 	err := me.controller.DeleteImage(imageID)
+	// 	if err != nil {
+	// 		c.JSON(http.StatusBadRequest, gin.H{"error": "image " + err.Error()})
+	// 		return
+	// 	}
 
-		// Save image metadata to separate collection
-		imageMetadata := bson.M{
-			"filename":     imageID.Hex(),
-			"upload_date":  time.Now(),
-			"content_type": file.Header.Get("Content-Type"),
-		}
-
-		// imageCollection := db.Collection("images")
-		// _, err = imageCollection.InsertOne(me.ctx, imageMetadata)
-		// if err != nil {
-		// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving image metadata: " + err.Error()})
-		// 	return
-		// }
-
-		// Save image to GridFS bucket using unique ID as filename
-		uploadStream, err := gridfsBucket.OpenUploadStreamWithID(imageID, imageID.Hex(), options.GridFSUpload().SetMetadata(imageMetadata))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving image to GridFS bucket: " + err.Error()})
-			return
-		}
-		defer uploadStream.Close()
-
-		_, err = io.Copy(uploadStream, src)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error copying image to GridFS bucket: " + err.Error()})
-			return
-		}
-
-		// Return image metadata as JSON to client
-		c.JSON(http.StatusOK, imageMetadata)
-	})
-	router.GET("/:id", me.RateLimit, func(c *gin.Context) {
-		// Retrieve image ID from request parameters
-		imageID := c.Param("id")
-
-		// Create a new GridFS bucket
-		db := me.dbclient.Database("pesatu")
-		gridfsBucket, err := gridfs.NewBucket(db)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating GridFS bucket: " + err.Error()})
-			return
-		}
-
-		// Retrieve image from GridFS bucket
-		downloadStream, err := gridfsBucket.OpenDownloadStreamByName(imageID)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Image not found: " + err.Error()})
-			return
-		}
-		defer downloadStream.Close()
-
-		// Retrieve metadata about the file
-		file := downloadStream.GetFile()
-		var metadata FileMetadata
-		err = bson.Unmarshal(file.Metadata, &metadata)
-		if err == nil {
-			// Set headers based on metadata
-			c.Header("Content-Type", metadata.ContentType)
-			c.Header("Content-Length", strconv.Itoa(int(file.Length)))
-		}
-
-		if err != nil {
-			// Retrieve metadata about the file
-			cli := me.dbclient.Database("pesatu").Collection("images")
-			query := bson.M{"filename": imageID}
-			fileDB := cli.FindOne(me.ctx, query)
-			err = fileDB.Decode(&metadata)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Error unmarshalling metadata: " + err.Error()})
-				return
-			}
-
-			// Set headers based on metadata
-			c.Header("Content-Type", metadata.ContentType)
-			c.Header("Content-Length", strconv.Itoa(int(downloadStream.GetFile().Length)))
-		}
-
-		// Send image as response to client
-		_, err = io.Copy(c.Writer, downloadStream)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error sending image: " + err.Error()})
-			return
-		}
-	})
-
-	//todo! put delete scheme in controller instead
-	router.DELETE("/:id", me.RateLimit, func(c *gin.Context) {
-		cookieJwt, err := c.Cookie("jwt")
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Error getting jwt: " + err.Error()})
-			return
-		}
-
-		_, err = auth.ValidateToken(cookieJwt)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Error validating jwt: " + err.Error()})
-			return
-		}
-		// Retrieve image ID from request parameters
-		imageID := c.Param("id")
-
-		// Create a new GridFS bucket
-		db := me.dbclient.Database("pesatu")
-		gridfsBucket, err := gridfs.NewBucket(db)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating GridFS bucket: " + err.Error()})
-			return
-		}
-
-		// Delete image from GridFS bucket
-		err = gridfsBucket.Delete(imageID)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Image not found: " + err.Error()})
-			return
-		}
-
-		// Return success response to client
-		c.JSON(http.StatusOK, gin.H{"message": "Image successfully deleted"})
-	})
-
+	// 	// Return success response to client
+	// 	c.JSON(http.StatusOK, gin.H{"message": "image successfully deleted"})
+	// })
 }
 
 func (me *UploadImageRoute) RateLimit(ctx *gin.Context) {

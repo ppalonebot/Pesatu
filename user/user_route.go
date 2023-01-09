@@ -3,7 +3,6 @@ package user
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"pesatu/auth"
@@ -68,7 +67,7 @@ func CheckAllowCredentials(ctx *gin.Context, res *ResponseUser, code int) *Respo
 }
 
 func (me *UserRoute) InitRouteTo(rg *gin.Engine) {
-	router := rg.Group("/usr")
+	router := rg.Group("/usr").Use(auth.AuthMiddleware())
 	router.POST("/rpc", me.RateLimit, me.RPCHandle)
 	router.GET("/resetpwd", me.RateLimit, me.ResetPwdHandler)
 }
@@ -100,243 +99,252 @@ func (me *UserRoute) ResetPwdHandler(c *gin.Context) {
 }
 
 func (me *UserRoute) RPCHandle(ctx *gin.Context) {
-	cookieJwt, errCookieJwt := ctx.Cookie("jwt")
-	statuscode := http.StatusBadRequest
 	var jreq jsonrpc2.RPCRequest
 	if err := ctx.ShouldBindJSON(&jreq); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"status": "jsonrpc fail", "message": err.Error()})
 		return
-	} else {
-		Logger.V(2).Info(fmt.Sprintf("RPCHandle %s", jreq.Method))
 	}
+
+	Logger.V(2).Info(fmt.Sprintf("RPCHandle %s", jreq.Method))
 
 	jres := &jsonrpc2.RPCResponse{
 		JSONRPC: "2.0",
 		ID:      jreq.ID,
 	}
 
+	statuscode := http.StatusBadRequest
 	switch jreq.Method {
 	case "Login":
-		var login *Login
-		err := json.Unmarshal(jreq.Params, &login)
-		if err != nil {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		} else {
-			res, e, code := me.userController.UserLogin(login)
-			res = CheckAllowCredentials(ctx, res, code)
-			jres.Result, _ = utils.ToRawMessage(res)
-			jres.Error = e
-			statuscode = code
-		}
+		statuscode = me.method_Login(ctx, &jreq, jres)
 	case "RefreshToken":
-		var reg *GetUserRequest
-		var err error
-		iserror := false
-		err = json.Unmarshal(jreq.Params, &reg)
-		if err == nil {
-			if errCookieJwt == nil {
-				reg.JWT = cookieJwt
-			}
-			var validuser *auth.Claims
-			validuser, err = me.userController.ValidateToken(reg.JWT)
-			expiresAt := time.Unix(validuser.ExpiresAt, 0)
-			//check if token has been expired more than duration
-			if time.Now().Add(time.Hour * 12).After(expiresAt) {
-				if validuser != nil && validuser.GetUID() == reg.UID {
-					res, e, code := me.userController.FindUserById(reg.UID, validuser.GetCode())
-					if e == nil {
-						res.JWT, _ = auth.CreateJWTToken(reg.UID, res.Username, validuser.GetCode())
-					}
-					res = CheckAllowCredentials(ctx, res, code)
-					jres.Result, _ = utils.ToRawMessage(res)
-					jres.Error = e
-					statuscode = code
-				} else {
-					iserror = true
-				}
-			} else {
-				iserror = true
-			}
-		} else {
-			iserror = true
-		}
-
-		if iserror {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		}
-
+		statuscode = me.method_RefreshToken(ctx, &jreq, jres)
 	case "Register":
-		var reg *CreateUserRequest
-		err := json.Unmarshal(jreq.Params, &reg)
-		if err != nil {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		} else {
-			res, e, code := me.userController.Register(reg)
-			res = CheckAllowCredentials(ctx, res, code)
-			jres.Result, _ = utils.ToRawMessage(res)
-			jres.Error = e
-			statuscode = code
-		}
+		statuscode = me.method_Register(ctx, &jreq, jres)
 	case "ConfirmRegistration":
-		var reg *ConfirmRegCode
-		iserror := false
-		err := json.Unmarshal(jreq.Params, &reg)
-		if err == nil {
-			if errCookieJwt == nil {
-				reg.JWT = cookieJwt
-			}
-			var validuser *auth.Claims
-			validuser, err = me.userController.ValidateToken(reg.JWT)
-			if err == nil && validuser.GetUID() == reg.UID {
-				res, e, code := me.userController.ConfirmRegistration(reg)
-				jres.Result, _ = utils.ToRawMessage(res)
-				jres.Error = e
-				statuscode = code
-			} else {
-				iserror = true
-			}
-		} else {
-			iserror = true
-		}
-
-		if iserror {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		}
-
+		statuscode = me.method_ConfirmRegistration(ctx, &jreq, jres)
 	case "ResendCode":
-		var reg *GetUserRequest
-		iserror := false
-		err := json.Unmarshal(jreq.Params, &reg)
-		if err == nil {
-			if errCookieJwt == nil {
-				reg.JWT = cookieJwt
-			}
-			var validuser *auth.Claims
-			validuser, err = me.userController.ValidateToken(reg.JWT)
-			if err == nil && validuser.GetUID() == reg.UID {
-				res, e, code := me.userController.ResendCode(reg)
-				jres.Result, _ = utils.ToRawMessage(res)
-				jres.Error = e
-				statuscode = code
-			} else {
-				iserror = true
-			}
-		} else {
-			iserror = true
-		}
-
-		if iserror {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		}
-
+		statuscode = me.method_ResendCode(ctx, &jreq, jres)
 	case "SendPwdReset":
-		var reg *ForgotPwdRequest
-		err := json.Unmarshal(jreq.Params, &reg)
-		if err == nil {
-			res, e, code := me.userController.ForgotPassword(reg)
-			jres.Result, _ = utils.ToRawMessage(res)
-			jres.Error = e
-			statuscode = code
-		} else {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		}
-
+		statuscode = me.method_SendPwdReset(ctx, &jreq, jres)
 	case "ResetPassword":
-		var reg *PwdResetRequest
-		var err error
-		iserror := false
-		err = json.Unmarshal(jreq.Params, &reg)
-		if err == nil {
-			var validuser *auth.Claims
-			validuser, err = me.userController.ValidateToken(reg.JWT)
-			if err == nil {
-				if validuser.GetCmd() == "ResetPassword" {
-					res, e, code := me.userController.ResetPassword(validuser.GetUID(), reg.Password, validuser.GetCode())
-					jres.Result, _ = utils.ToRawMessage(res)
-					jres.Error = e
-					statuscode = code
-				} else {
-					err = errors.New("invalid JWT cmd")
-					iserror = true
-				}
-			} else {
-				iserror = true
-			}
-		} else {
-			iserror = true
-		}
-
-		if iserror {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		}
-
+		statuscode = me.method_ResetPassword(ctx, &jreq, jres)
 	case "GetSelf":
-		var reg *GetUserRequest
-		iserror := false
-		err := json.Unmarshal(jreq.Params, &reg)
-		if err == nil {
-			if errCookieJwt == nil {
-				reg.JWT = cookieJwt
-			}
-			var validuser *auth.Claims
-			validuser, err = me.userController.ValidateToken(reg.JWT)
-			if err == nil && validuser.GetUID() == reg.UID {
-				res, e, code := me.userController.FindUserById(reg.UID, validuser.GetCode())
-				jres.Result, _ = utils.ToRawMessage(res)
-				jres.Error = e
-				statuscode = code
-			} else {
-				iserror = true
-			}
-		} else {
-			iserror = true
-		}
-
-		if iserror {
-			statuscode = http.StatusBadRequest
-			jres.Error = &jsonrpc2.RPCError{
-				Code:    http.StatusBadRequest,
-				Message: err.Error(),
-			}
-		}
-
+		statuscode = me.method_GetSelf(ctx, &jreq, jres)
 	default:
-		jres.Error = &jsonrpc2.RPCError{
-			Code:    http.StatusMethodNotAllowed,
-			Message: "method not allowed",
-		}
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusMethodNotAllowed, Message: "method not allowed"}
 	}
 
 	if jres.Error != nil {
-		Logger.Error(errors.New(jres.Error.Message), "response with error")
+		Logger.Error(fmt.Errorf(jres.Error.Message), "response with error")
 	}
 	ctx.JSON(statuscode, jres)
+}
+
+func (me *UserRoute) method_Login(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	var login *Login
+	err := json.Unmarshal(jreq.Params, &login)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.userController.UserLogin(login)
+	res = CheckAllowCredentials(ctx, res, code)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *UserRoute) method_RefreshToken(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
+	var reg *GetUserRequest
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	validuser := vuser.(*auth.Claims)
+	expiresAt := time.Unix(validuser.ExpiresAt, 0)
+	//check if token has been expired more than duration
+	if !time.Now().Add(time.Hour * 12).After(expiresAt) {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
+	}
+
+	if validuser.GetUID() != reg.UID {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "ilegal jwt"}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.userController.FindUserById(reg.UID, validuser.GetCode())
+	if e == nil {
+		res.JWT, _ = auth.CreateJWTToken(reg.UID, res.Username, validuser.GetCode())
+	}
+	res = CheckAllowCredentials(ctx, res, code)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *UserRoute) method_Register(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	var reg *CreateUserRequest
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.userController.Register(reg)
+	res = CheckAllowCredentials(ctx, res, code)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *UserRoute) method_ConfirmRegistration(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
+	var reg *ConfirmRegCode
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	validuser := vuser.(*auth.Claims)
+	if validuser.IsExpired() {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
+	}
+
+	if validuser.GetUID() != reg.UID {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "ilegal jwt"}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.userController.ConfirmRegistration(reg)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *UserRoute) method_ResendCode(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
+	var reg *GetUserRequest
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	validuser := vuser.(*auth.Claims)
+	if validuser.IsExpired() {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
+	}
+
+	if validuser.GetUID() != reg.UID {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "ilegal jwt"}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.userController.ResendCode(reg)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *UserRoute) method_SendPwdReset(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	var reg *ForgotPwdRequest
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.userController.ForgotPassword(reg)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *UserRoute) method_ResetPassword(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	var reg *PwdResetRequest
+	var err error
+	err = json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	var validuser *auth.Claims
+	validuser, err = me.userController.ValidateToken(reg.JWT)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	if validuser.GetCmd() != "ResetPassword" {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "ilegal reset password token"}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.userController.ResetPassword(validuser.GetUID(), reg.Password, validuser.GetCode())
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *UserRoute) method_GetSelf(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
+	validuser := vuser.(*auth.Claims)
+	if validuser.IsExpired() {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
+	}
+
+	var reg *GetUserRequest
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	if validuser.GetUID() != reg.UID {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "ilegal jwt"}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.userController.FindUserById(reg.UID, validuser.GetCode())
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
 }
