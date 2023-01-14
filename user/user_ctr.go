@@ -477,6 +477,7 @@ func (me *UserController) SearchUsers(keyword, pageStr, limitStr, userUID, code 
 	var users []*DBUser
 	if strings.HasPrefix(keyword, "@") {
 		keyword = keyword[1:]
+		keyword = strings.ToLower(keyword)
 		_, err = utils.IsValidUsername(keyword)
 		if err != nil {
 			return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid username input"}, http.StatusOK
@@ -492,11 +493,15 @@ func (me *UserController) SearchUsers(keyword, pageStr, limitStr, userUID, code 
 
 	// Create a new slice of DBUser structs
 	resusers := make([]*ResponseUserShort, len(users))
-	for i, user := range users {
+	for i, u := range users {
+		if u.UID == userUID {
+			continue
+		}
+
 		resusers[i] = &ResponseUserShort{
-			Name:     user.Name,
-			Username: user.Username,
-			Avatar:   user.Avatar,
+			Name:     u.Name,
+			Username: u.Username,
+			Avatar:   u.Avatar,
 		}
 	}
 

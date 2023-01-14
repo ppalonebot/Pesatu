@@ -417,7 +417,7 @@ func (me *UserRoute) method_SearchUser(ctx *gin.Context, jreq *jsonrpc2.RPCReque
 		limit = "10"
 	}
 
-	res, e, code := me.userController.SearchUsers(page, limit, reg.Keyword, reg.UID, validuser.GetCode())
+	res, e, code := me.userController.SearchUsers(reg.Keyword, page, limit, reg.UID, validuser.GetCode())
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 
