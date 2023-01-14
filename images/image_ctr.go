@@ -6,8 +6,11 @@ import (
 	"mime/multipart"
 	"net/http"
 	"pesatu/auth"
+	"pesatu/user"
 	"pesatu/utils"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -15,11 +18,12 @@ import (
 )
 
 type ImageController struct {
-	service I_ImageRepo
+	userService user.I_UserRepo
+	service     I_ImageRepo
 }
 
-func NewImageController(service I_ImageRepo) ImageController {
-	return ImageController{service}
+func NewImageController(userService user.I_UserRepo, service I_ImageRepo) ImageController {
+	return ImageController{userService, service}
 }
 
 func (me *ImageController) UploadImage(owner string, file *multipart.FileHeader) (*ImageMetadata, error) {
@@ -32,7 +36,7 @@ func (me *ImageController) UploadImage(owner string, file *multipart.FileHeader)
 }
 
 func (me *ImageController) FindImage(imageID string) (*gridfs.DownloadStream, error) {
-	ok := len(imageID) == 0
+	ok := len(imageID) > 0
 	if !ok {
 		return nil, fmt.Errorf("id can not empty")
 	}
@@ -51,7 +55,7 @@ func (me *ImageController) FindImage(imageID string) (*gridfs.DownloadStream, er
 }
 
 func (me *ImageController) DeleteImage(imageID string) error {
-	ok := len(imageID) == 0
+	ok := len(imageID) > 0
 	if !ok {
 		return fmt.Errorf("id can not empty")
 	}
@@ -82,13 +86,6 @@ func (me *ImageController) ImageUploadHandler(c *gin.Context) {
 		return
 	}
 
-	if c.Request.ContentLength > MAX_IMAGE_SIZE {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "image size exceeds maximum allowed, max 5MB"})
-		return
-	}
-
-	//todo! use special token to limit upload
-
 	// Retrieve uploaded image file
 	file, err := c.FormFile("image")
 	if err != nil {
@@ -96,11 +93,57 @@ func (me *ImageController) ImageUploadHandler(c *gin.Context) {
 		return
 	}
 
+	if c.Request.ContentLength > MAX_IMAGE_SIZE {
+		Logger.V(2).Error(fmt.Errorf("image size exceeds maximum allowed"), "error while uploading image")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image size exceeds maximum allowed, max 2MB"})
+		return
+	}
+
+	if validuser.GetCmd() != "UpdateAvatar" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ilegal token"})
+		return
+	}
+
+	user, err := me.userService.FindUserById(validuser.GetUID())
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(user.Avatar) == 0 && validuser.GetCode() != "#empty" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ilegal token code"})
+		return
+	}
+
+	if len(user.Avatar) != 0 && !strings.HasSuffix(user.Avatar, validuser.GetCode()) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ilegal token code 2"})
+		return
+	}
+
 	// Save image metadata to separate collection
-	imageMetadata, err := me.UploadImage(validuser.GetUID(),file)
+	imageMetadata, err := me.UploadImage(validuser.GetUID(), file)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error uploading image: " + err.Error()})
 		return
+	}
+
+	if validuser.GetCmd() == "UpdateAvatar" {
+		if len(user.Avatar) > 0 {
+			parts := strings.Split(user.Avatar, "/")
+			id := parts[len(parts)-1]
+			err = me.service.DeleteImage(id)
+			if err != nil {
+				Logger.Error(err, "error while deleting image")
+			}
+		}
+
+		user.Avatar = utils.CreateImageLink(imageMetadata.Filename)
+		user.UpdatedAt = time.Now()
+		_, err = me.userService.UpdateUser(user.Id, user)
+
+		if err != nil {
+			Logger.Error(err, "error while updeting user avatar")
+		}
 	}
 
 	// Return image metadata as JSON to client
@@ -110,6 +153,7 @@ func (me *ImageController) ImageUploadHandler(c *gin.Context) {
 func (me *ImageController) GetImageHandler(c *gin.Context) {
 	// Retrieve image ID from request parameters
 	imageID := c.Param("id")
+	Logger.V(2).Info(fmt.Sprintf("get image %s", imageID))
 
 	// Retrieve image from GridFS bucket
 	downloadStream, err := me.FindImage(imageID)
@@ -121,7 +165,7 @@ func (me *ImageController) GetImageHandler(c *gin.Context) {
 
 	// Retrieve metadata about the file
 	file := downloadStream.GetFile()
-	var metadata FileMetadata
+	var metadata ImageMetadata
 	err = bson.Unmarshal(file.Metadata, &metadata)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "image metadata unavailable"})
@@ -129,7 +173,7 @@ func (me *ImageController) GetImageHandler(c *gin.Context) {
 	}
 
 	// Set headers based on metadata
-	c.Header("Content-Type", metadata.ContentType)
+	c.Header("Content-Type", metadata.Contentype)
 	c.Header("Content-Length", strconv.Itoa(int(file.Length)))
 
 	// Send image as response to client

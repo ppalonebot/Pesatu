@@ -9,19 +9,15 @@ import (
 	"pesatu/utils"
 	"strings"
 	"time"
-
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/gridfs"
 )
 
 type ProfileController struct {
 	userService    user.I_UserRepo
 	profileService I_ProfileRepo
-	mongoCli       *mongo.Client
 }
 
-func NewProfileController(userService user.I_UserRepo, profileService I_ProfileRepo, mongoCli *mongo.Client) ProfileController {
-	return ProfileController{userService, profileService, mongoCli}
+func NewProfileController(userService user.I_UserRepo, profileService I_ProfileRepo) ProfileController {
+	return ProfileController{userService, profileService}
 }
 
 func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *UpdateUserProfile) (*ResponseUserProfile, *jsonrpc2.RPCError, int) {
@@ -60,7 +56,7 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 		}
 	}
 
-	errres := make([]*jsonrpc2.InputFieldError, 0, 6)
+	errres := make([]*jsonrpc2.InputFieldError, 0, 5)
 
 	if user.Name != update.Name {
 		_, err = utils.IsValidName(update.Name)
@@ -117,27 +113,27 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 		}
 	}
 
-	if profile != nil && (update.PPic != profile.PPic) {
-		if len(update.PPic) > 36 {
-			errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid ppic name", Field: "ppic"})
-		} else {
-			ok = utils.IsAlphaNumericLowcase(update.PPic) || len(update.PPic) == 0
-			if !ok {
-				errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid input ppic", Field: "ppic"})
-			} else {
-				//delete old
-				if len(profile.PPic) > 0 {
-					// Create a new GridFS bucket
-					db := me.mongoCli.Database("pesatu")
-					gridfsBucket, err := gridfs.NewBucket(db)
-					if err == nil {
-						// Delete image from GridFS bucket
-						_ = gridfsBucket.Delete(profile.PPic)
-					}
-				}
-			}
-		}
-	}
+	// if profile != nil && (update.PPic != profile.PPic) {
+	// 	if len(update.PPic) > 36 {
+	// 		errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid ppic name", Field: "ppic"})
+	// 	} else {
+	// 		ok = utils.IsAlphaNumericLowcase(update.PPic) || len(update.PPic) == 0
+	// 		if !ok {
+	// 			errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid input ppic", Field: "ppic"})
+	// 		} else {
+	// 			//delete old
+	// 			if len(profile.PPic) > 0 {
+	// 				// Create a new GridFS bucket
+	// 				db := me.mongoCli.Database("pesatu")
+	// 				gridfsBucket, err := gridfs.NewBucket(db)
+	// 				if err == nil {
+	// 					// Delete image from GridFS bucket
+	// 					_ = gridfsBucket.Delete(profile.PPic)
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// }
 
 	if len(errres) > 0 {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "forbidden, invalid input", Params: errres}, http.StatusOK
@@ -167,11 +163,11 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 	}
 
 	utils.CopyStruct(update, user)
-	if len(update.PPic) == 0 {
-		user.Avatar = ""
-	} else {
-		user.Avatar = fmt.Sprintf("/image/%s", update.PPic)
-	}
+	// if len(update.PPic) == 0 {
+	// 	user.Avatar = ""
+	// } else {
+	// 	user.Avatar = utils.CreateImageLink(update.PPic)
+	// }
 	user.UpdatedAt = time.Now()
 	user, err = me.userService.UpdateUser(user.Id, user)
 	if err != nil {
@@ -231,4 +227,48 @@ func (me *ProfileController) FindMyProfile(validuser *auth.Claims, owner string)
 
 	Logger.V(2).Info("found profile", user.Username)
 	return &resUserProfile, nil, http.StatusOK
+}
+
+func (me *ProfileController) GetUpdateAvatarToken(validuser *auth.Claims, reg *GetProfileRequest) (*GetProfileRequest, *jsonrpc2.RPCError, int) {
+	Logger.V(2).Info("get update avatar token", reg.UID)
+	if validuser.GetUID() != reg.UID {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user uid did not match"}, http.StatusOK
+	}
+
+	ok := utils.IsValidUid(reg.UID)
+	if !ok {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "forbidden, invalid input owner"}, http.StatusOK
+	}
+
+	user, err := me.userService.FindUserById(validuser.GetUID())
+	if err != nil {
+		if strings.Contains(err.Error(), "exists") {
+			return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
+		}
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
+	}
+	if !user.Reg.Registered {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user unregistered"}, http.StatusOK
+	}
+	if user.Reg.Code != validuser.GetCode() {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
+	}
+
+	code := user.Avatar
+	if len(code) == 0 {
+		code = "#empty"
+	}
+
+	token, err := auth.CreateJWTWithExpire(user.UID, user.Username, "UpdateAvatar", code, time.Minute*3)
+	if err != nil {
+		Logger.Error(err, "internal error, while creating token")
+		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
+	}
+
+	res := &GetProfileRequest{
+		UID: reg.UID,
+		JWT: token,
+	}
+
+	return res, nil, http.StatusOK
 }

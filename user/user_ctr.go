@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -371,6 +372,34 @@ func (me *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCE
 	return &resUser, nil, http.StatusOK
 }
 
+func (me *UserController) UserLogout(userUID, code string) (*ResponseStatus, *jsonrpc2.RPCError, int) {
+	Logger.V(2).Info(fmt.Sprintf("Logout attempt from %s", userUID))
+
+	ok := utils.IsValidUid(userUID)
+	if !ok {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "uid invalid"}, http.StatusOK
+	}
+
+	user, err := me.userService.FindUserById(userUID)
+	if err != nil {
+		if strings.Contains(err.Error(), "exists") {
+			return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
+		}
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
+	}
+
+	if user.Reg.Code != code {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
+	}
+
+	//todo! implement code for each client/browser
+	user.Reg.Code = utils.GenerateRandomNumber()
+	me.userService.UpdateUser(user.Id, user)
+
+	Logger.V(2).Info("logged out")
+	return &ResponseStatus{UID: user.UID, Status: "success"}, nil, http.StatusOK
+}
+
 func (me *UserController) ValidateToken(jwt string) (*auth.Claims, error) {
 	if len(jwt) >= 1 {
 		claim, err := auth.ValidateToken(jwt)
@@ -385,26 +414,16 @@ func (me *UserController) FindUserById(userUID, code string) (*ResponseUser, *js
 
 	ok := utils.IsValidUid(userUID)
 	if !ok {
-		return nil, &jsonrpc2.RPCError{
-			Code:    http.StatusForbidden,
-			Message: "uid invalid",
-		}, http.StatusOK
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "uid invalid"}, http.StatusOK
 	}
 
 	user, err := me.userService.FindUserById(userUID)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "exists") {
-			return nil, &jsonrpc2.RPCError{
-				Code:    http.StatusNotFound,
-				Message: err.Error(),
-			}, http.StatusOK
+			return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
 		}
-
-		return nil, &jsonrpc2.RPCError{
-			Code:    http.StatusBadGateway,
-			Message: err.Error(),
-		}, http.StatusOK
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
 	}
 
 	if user.Reg.Code != code {
@@ -419,30 +438,70 @@ func (me *UserController) FindUserById(userUID, code string) (*ResponseUser, *js
 	return &resUser, nil, http.StatusOK
 }
 
-// func (uc *UserController) FindUsers(ctx *gin.Context) {
-// 	var page = ctx.DefaultQuery("page", "1")
-// 	var limit = ctx.DefaultQuery("limit", "10")
+func (me *UserController) SearchUsers(keyword, pageStr, limitStr, userUID, code string) ([]*ResponseUserShort, *jsonrpc2.RPCError, int) {
+	var page = pageStr
+	var limit = limitStr
 
-// 	intPage, err := strconv.Atoi(page)
-// 	if err != nil {
-// 		ctx.JSON(http.StatusBadGateway, gin.H{"status": "fail", "message": err.Error()})
-// 		return
-// 	}
+	intPage, err := strconv.Atoi(page)
+	if err != nil {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid page input"}, http.StatusOK
+	}
 
-// 	intLimit, err := strconv.Atoi(limit)
-// 	if err != nil {
-// 		ctx.JSON(http.StatusBadGateway, gin.H{"status": "fail", "message": err.Error()})
-// 		return
-// 	}
+	intLimit, err := strconv.Atoi(limit)
+	if err != nil {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid limit input"}, http.StatusOK
+	}
 
-// 	users, err := uc.userService.FindUsers(intPage, intLimit)
-// 	if err != nil {
-// 		ctx.JSON(http.StatusBadGateway, gin.H{"status": "fail", "message": err.Error()})
-// 		return
-// 	}
+	//handle for keyword empty
+	if len(keyword) == 0 || keyword == "@" {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid search input"}, http.StatusOK
+	}
 
-// 	ctx.JSON(http.StatusOK, gin.H{"status": "success", "results": len(users), "data": users})
-// }
+	ok := utils.IsValidUid(userUID)
+	if !ok {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "uid invalid"}, http.StatusOK
+	}
+
+	user, err := me.userService.FindUserById(userUID)
+	if err != nil {
+		if strings.Contains(err.Error(), "exists") {
+			return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
+		}
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
+	}
+
+	if user.Reg.Code != code {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
+	}
+
+	var users []*DBUser
+	if strings.HasPrefix(keyword, "@") {
+		keyword = keyword[1:]
+		_, err = utils.IsValidUsername(keyword)
+		if err != nil {
+			return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid username input"}, http.StatusOK
+		}
+		users, err = me.userService.FindUsersByKeyUsername(keyword, intPage, intLimit)
+	} else {
+		_, err = utils.IsValidName(keyword)
+		if err != nil {
+			return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid name input"}, http.StatusOK
+		}
+		users, err = me.userService.FindUsersByKeyName(keyword, intPage, intLimit)
+	}
+
+	// Create a new slice of DBUser structs
+	resusers := make([]*ResponseUserShort, len(users))
+	for i, user := range users {
+		resusers[i] = &ResponseUserShort{
+			Name:     user.Name,
+			Username: user.Username,
+			Avatar:   user.Avatar,
+		}
+	}
+
+	return resusers, nil, http.StatusOK
+}
 
 // func (uc *UserController) DeleteUser(ctx *gin.Contextgin
 // 	userId := ctx.Param("userId")

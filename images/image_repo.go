@@ -77,7 +77,13 @@ func (me *ImageService) FindImage(imageID string) (*gridfs.DownloadStream, error
 }
 
 func (me *ImageService) DeleteImage(imageID string) error {
-	err := me.gridfsBucket.Delete(imageID)
+	// Create an ObjectID value
+	objectID, err := primitive.ObjectIDFromHex(imageID)
+	if err != nil {
+		return fmt.Errorf("error creating ObjectID: %s", err.Error())
+	}
+
+	err = me.gridfsBucket.Delete(objectID)
 	if err != nil {
 		return fmt.Errorf("image not found: %s", err.Error())
 	}

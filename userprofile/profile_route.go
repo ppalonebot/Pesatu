@@ -28,12 +28,12 @@ func NewProfileRoute(mongoclient *mongo.Client, ctx context.Context, l logr.Logg
 	Logger.V(2).Info("NewProfileRoute created")
 	collection := mongoclient.Database("pesatu").Collection("profiles")
 	service := NewProfileService(collection, ctx)
-	controller := NewProfileController(userService, service, mongoclient)
+	controller := NewProfileController(userService, service)
 	return ProfileRoute{controller, limiter}
 }
 
 func (me *ProfileRoute) InitRouteTo(rg *gin.Engine) {
-	router := rg.Group("/prf").Use(auth.AuthMiddleware())
+	router := rg.Group("/prf")
 	router.POST("/rpc", me.RateLimit, me.RPCHandle)
 }
 
@@ -65,6 +65,8 @@ func (me *ProfileRoute) RPCHandle(ctx *gin.Context) {
 	switch jreq.Method {
 	case "GetMyProfile":
 		statuscode = me.method_GetMyProfile(ctx, &jreq, jres)
+	case "GetUpdateAvatarToken":
+		statuscode = me.method_GetUpdateAvatarToken(ctx, &jreq, jres)
 	case "UpdateMyProfile":
 		statuscode = me.method_UpdateMyProfile(ctx, &jreq, jres)
 	default:
@@ -111,11 +113,31 @@ func (me *ProfileRoute) method_UpdateMyProfile(ctx *gin.Context, jreq *jsonrpc2.
 		return http.StatusUnauthorized
 	}
 
+	validuser := vuser.(*auth.Claims)
+	if validuser.IsExpired() {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
+	}
+
 	var reg *UpdateUserProfile
 	err := json.Unmarshal(jreq.Params, &reg)
 	if err != nil {
 		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
 		return http.StatusBadRequest
+	}
+
+	res, e, code := me.controller.UpdateMyProfile(validuser, reg)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *ProfileRoute) method_GetUpdateAvatarToken(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
 	}
 
 	validuser := vuser.(*auth.Claims)
@@ -124,7 +146,14 @@ func (me *ProfileRoute) method_UpdateMyProfile(ctx *gin.Context, jreq *jsonrpc2.
 		return http.StatusUnauthorized
 	}
 
-	res, e, code := me.controller.UpdateMyProfile(validuser, reg)
+	var reg *GetProfileRequest
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.controller.GetUpdateAvatarToken(validuser, reg)
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 

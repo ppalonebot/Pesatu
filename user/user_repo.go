@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"errors"
+	"fmt"
 	"pesatu/utils"
 	"time"
 
@@ -18,7 +19,9 @@ type I_UserRepo interface {
 	FindUserById(string) (*DBUser, error)
 	FindUserByUsername(string) (*DBUser, error)
 	FindUserByEmail(string) (*DBUser, error)
-	FindUsers(page int, limit int) ([]*DBUser, error)
+	FindUsers(query primitive.M, page int, limit int) ([]*DBUser, error)
+	FindUsersByKeyName(keyName string, page int, limit int) ([]*DBUser, error)
+	FindUsersByKeyUsername(keyUser string, page int, limit int) ([]*DBUser, error)
 	DeleteUser(primitive.ObjectID) error
 }
 
@@ -127,7 +130,7 @@ func (me *UserService) FindUserByEmail(email string) (*DBUser, error) {
 	return user, nil
 }
 
-func (me *UserService) FindUsers(page int, limit int) ([]*DBUser, error) {
+func (me *UserService) FindUsers(query primitive.M, page int, limit int) ([]*DBUser, error) {
 	if page == 0 {
 		page = 1
 	}
@@ -141,8 +144,6 @@ func (me *UserService) FindUsers(page int, limit int) ([]*DBUser, error) {
 	opt := options.FindOptions{}
 	opt.SetLimit(int64(limit))
 	opt.SetSkip(int64(skip))
-
-	query := bson.M{}
 
 	cursor, err := me.userCollection.Find(me.ctx, query, &opt)
 	if err != nil {
@@ -173,6 +174,16 @@ func (me *UserService) FindUsers(page int, limit int) ([]*DBUser, error) {
 	}
 
 	return users, nil
+}
+
+func (me *UserService) FindUsersByKeyName(keyName string, page int, limit int) ([]*DBUser, error) {
+	query := bson.M{"name": bson.M{"$regex": fmt.Sprintf(".*%s.*", keyName)}}
+	return me.FindUsers(query, page, limit)
+}
+
+func (me *UserService) FindUsersByKeyUsername(keyUser string, page int, limit int) ([]*DBUser, error) {
+	query := bson.M{"username": bson.M{"$regex": fmt.Sprintf(".*%s.*", keyUser)}}
+	return me.FindUsers(query, page, limit)
 }
 
 func (me *UserService) DeleteUser(obId primitive.ObjectID) error {

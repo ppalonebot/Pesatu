@@ -17,7 +17,6 @@ type UpdateUserProfile struct {
 	Email    string `json:"email"`
 	Status   string `json:"status"`
 	Bio      string `json:"bio"`
-	PPic     string `json:"ppic"`
 	JWT      string `json:"jwt"`
 }
 
@@ -33,12 +32,12 @@ type ResponseUserProfile struct {
 	Avatar       string `json:"avatar"`
 }
 
-type RegProfile struct {
-	Owner  string `json:"owner"`
-	Status string `json:"status"`
-	Bio    string `json:"bio"`
-	PPic   string `json:"ppic"`
-}
+// type RegProfile struct {
+// 	Owner  string `json:"owner"`
+// 	Status string `json:"status"`
+// 	Bio    string `json:"bio"`
+// 	PPic   string `json:"ppic"`
+// }
 
 type CreateProfile struct {
 	Owner     string    `json:"owner" bson:"owner"`

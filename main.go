@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"pesatu/auth"
 	"pesatu/images"
 	"pesatu/user"
 	"pesatu/userprofile"
@@ -114,14 +115,16 @@ func main() {
 	server.Static("/static", "./public/static")
 	server.Static("/app", "./public")
 
+	server.Use(auth.AuthMiddleware())
+
 	UserRouteController := user.NewUserRoute(mongoclient, ctx, logger, limiter)
 	UserRouteController.InitRouteTo(server)
 
-	UploadImageRouteCtr := images.NewUploadImageRoute(mongoclient, ctx, logger, limiter)
-	UploadImageRouteCtr.InitRouteTo(server)
-
 	ProfileRouteController := userprofile.NewProfileRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
 	ProfileRouteController.InitRouteTo(server)
+
+	UploadImageRouteCtr := images.NewUploadImageRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
+	UploadImageRouteCtr.InitRouteTo(server)
 
 	// Use the redirectToAppMiddleware middleware to wrap the handler
 	server.Use(redirectToAppMiddleware())

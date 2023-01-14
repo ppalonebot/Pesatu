@@ -210,3 +210,7 @@ func GetTemplateData(file_html string) (*template.Template, error) {
 
 	return templateData, nil
 }
+
+func CreateImageLink(fname string) string {
+	return fmt.Sprintf("/image/%s", fname)
+}

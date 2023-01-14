@@ -67,7 +67,7 @@ func CheckAllowCredentials(ctx *gin.Context, res *ResponseUser, code int) *Respo
 }
 
 func (me *UserRoute) InitRouteTo(rg *gin.Engine) {
-	router := rg.Group("/usr").Use(auth.AuthMiddleware())
+	router := rg.Group("/usr")
 	router.POST("/rpc", me.RateLimit, me.RPCHandle)
 	router.GET("/resetpwd", me.RateLimit, me.ResetPwdHandler)
 }
@@ -116,6 +116,8 @@ func (me *UserRoute) RPCHandle(ctx *gin.Context) {
 	switch jreq.Method {
 	case "Login":
 		statuscode = me.method_Login(ctx, &jreq, jres)
+	// case "Logout":
+	// 	statuscode = me.method_Logout(ctx, &jreq, jres)
 	case "RefreshToken":
 		statuscode = me.method_RefreshToken(ctx, &jreq, jres)
 	case "Register":
@@ -130,6 +132,8 @@ func (me *UserRoute) RPCHandle(ctx *gin.Context) {
 		statuscode = me.method_ResetPassword(ctx, &jreq, jres)
 	case "GetSelf":
 		statuscode = me.method_GetSelf(ctx, &jreq, jres)
+	case "SearchUser":
+		statuscode = me.method_SearchUser(ctx, &jreq, jres)
 	default:
 		jres.Error = &jsonrpc2.RPCError{Code: http.StatusMethodNotAllowed, Message: "method not allowed"}
 	}
@@ -150,6 +154,35 @@ func (me *UserRoute) method_Login(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, j
 
 	res, e, code := me.userController.UserLogin(login)
 	res = CheckAllowCredentials(ctx, res, code)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *UserRoute) method_Logout(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	//todo, this function is not implemented yet on the client
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
+	validuser := vuser.(*auth.Claims)
+
+	var reg *GetUserRequest
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	if validuser.GetUID() != reg.UID {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "ilegal jwt"}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.userController.UserLogout(reg.UID, validuser.GetCode())
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 
@@ -343,6 +376,48 @@ func (me *UserRoute) method_GetSelf(ctx *gin.Context, jreq *jsonrpc2.RPCRequest,
 	}
 
 	res, e, code := me.userController.FindUserById(reg.UID, validuser.GetCode())
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *UserRoute) method_SearchUser(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
+	validuser := vuser.(*auth.Claims)
+	if validuser.IsExpired() {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
+	}
+
+	var reg *SearchUser
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	if validuser.GetUID() != reg.UID {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "ilegal jwt"}
+		return http.StatusBadRequest
+	}
+
+	page := reg.Page
+	if page == "" {
+		page = "1"
+	}
+
+	limit := reg.Limit
+	if limit == "" {
+		limit = "10"
+	}
+
+	res, e, code := me.userController.SearchUsers(page, limit, reg.Keyword, reg.UID, validuser.GetCode())
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 

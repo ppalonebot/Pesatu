@@ -6,6 +6,13 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+type SearchUser struct {
+	UID     string `json:"uid"`
+	Keyword string `json:"keyword"`
+	Page    string `json:"page"`
+	Limit   string `json:"limit"`
+}
+
 type ForgotPwdRequest struct {
 	Email string `json:"email"`
 }
@@ -57,6 +64,12 @@ type ResponseUser struct {
 	JWT          string `json:"jwt"`
 	IsRegistered bool   `json:"isregistered"`
 	Avatar       string `json:"avatar"`
+}
+
+type ResponseUserShort struct {
+	Name     string `json:"name"`
+	Username string `json:"username"`
+	Avatar   string `json:"avatar"`
 }
 
 type CreateUser struct {
