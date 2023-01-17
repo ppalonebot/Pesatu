@@ -113,28 +113,6 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 		}
 	}
 
-	// if profile != nil && (update.PPic != profile.PPic) {
-	// 	if len(update.PPic) > 36 {
-	// 		errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid ppic name", Field: "ppic"})
-	// 	} else {
-	// 		ok = utils.IsAlphaNumericLowcase(update.PPic) || len(update.PPic) == 0
-	// 		if !ok {
-	// 			errres = append(errres, &jsonrpc2.InputFieldError{Error: "invalid input ppic", Field: "ppic"})
-	// 		} else {
-	// 			//delete old
-	// 			if len(profile.PPic) > 0 {
-	// 				// Create a new GridFS bucket
-	// 				db := me.mongoCli.Database("pesatu")
-	// 				gridfsBucket, err := gridfs.NewBucket(db)
-	// 				if err == nil {
-	// 					// Delete image from GridFS bucket
-	// 					_ = gridfsBucket.Delete(profile.PPic)
-	// 				}
-	// 			}
-	// 		}
-	// 	}
-	// }
-
 	if len(errres) > 0 {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "forbidden, invalid input", Params: errres}, http.StatusOK
 	}
@@ -163,11 +141,6 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 	}
 
 	utils.CopyStruct(update, user)
-	// if len(update.PPic) == 0 {
-	// 	user.Avatar = ""
-	// } else {
-	// 	user.Avatar = utils.CreateImageLink(update.PPic)
-	// }
 	user.UpdatedAt = time.Now()
 	user, err = me.userService.UpdateUser(user.Id, user)
 	if err != nil {

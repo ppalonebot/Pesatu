@@ -118,28 +118,6 @@ func (me *UserController) Register(regUser *CreateUserRequest) (*ResponseUser, *
 	return &resUser, nil, http.StatusCreated
 }
 
-// func (uc *UserController) UpdateUser(ctx *gin.Context) {
-// 	userId := ctx.Param("userId")
-
-// 	var user *entity.UpdateUser
-// 	if err := ctx.ShouldBindJSON(&user); err != nil {
-// 		ctx.JSON(http.StatusBadGateway, gin.H{"status": "fail", "message": err.Error()})
-// 		return
-// 	}
-
-// 	updatedUser, err := uc.userService.UpdateUser(userId, user)
-// 	if err != nil {
-// 		if strings.Contains(err.Error(), "Id exists") {
-// 			ctx.JSON(http.StatusNotFound, gin.H{"status": "fail", "message": err.Error()})
-// 			return
-// 		}
-// 		ctx.JSON(http.StatusBadGateway, gin.H{"status": "fail", "message": err.Error()})
-// 		return
-// 	}
-
-//		ctx.JSON(http.StatusOK, gin.H{"status": "success", "data": updatedUser})
-//	}
-
 func (me *UserController) ResetPassword(uid, newPassword, code string) (*ResponseStatus, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("reset password %s", uid))
 
@@ -392,7 +370,7 @@ func (me *UserController) UserLogout(userUID, code string) (*ResponseStatus, *js
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
 	}
 
-	//todo! implement code for each client/browser
+	//todo implement code for each client/browser
 	user.Reg.Code = utils.GenerateRandomNumber()
 	me.userService.UpdateUser(user.Id, user)
 
