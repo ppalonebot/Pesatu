@@ -50,6 +50,9 @@ func StringInSlice(a string, list []string) bool {
 }
 
 func ToRawMessage(s interface{}) (json.RawMessage, error) {
+	if s, ok := s.([]interface{}); ok && len(s) == 0 {
+		return json.RawMessage([]byte{'[', ']'}), nil
+	}
 	b, err := json.Marshal(s)
 	if err != nil {
 		return nil, err

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"pesatu/auth"
+	"pesatu/contacts"
 	"pesatu/images"
 	"pesatu/user"
 	"pesatu/userprofile"
@@ -125,6 +126,9 @@ func main() {
 
 	UploadImageRouteCtr := images.NewUploadImageRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
 	UploadImageRouteCtr.InitRouteTo(server)
+
+	ContactRouteController := contacts.NewContactRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
+	ContactRouteController.InitRouteTo(server)
 
 	// Use the redirectToAppMiddleware middleware to wrap the handler
 	server.Use(redirectToAppMiddleware())

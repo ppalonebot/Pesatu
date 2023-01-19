@@ -23,6 +23,7 @@ type I_UserRepo interface {
 	FindUsersByKeyName(keyName string, page int, limit int) ([]*DBUser, error)
 	FindUsersByKeyUsername(keyUser string, page int, limit int) ([]*DBUser, error)
 	DeleteUser(primitive.ObjectID) error
+	GetCollection() *mongo.Collection
 }
 
 type UserService struct {
@@ -32,6 +33,10 @@ type UserService struct {
 
 func NewUserService(userCollection *mongo.Collection, ctx context.Context) I_UserRepo {
 	return &UserService{userCollection, ctx}
+}
+
+func (me *UserService) GetCollection() *mongo.Collection {
+	return me.userCollection
 }
 
 func (me *UserService) CreateUser(user *CreateUser) (*DBUser, error) {
