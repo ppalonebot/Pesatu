@@ -10,6 +10,7 @@ import (
 type Status = string
 
 const (
+	Waiting  Status = "waiting"
 	Pending  Status = "pending"
 	Accepted Status = "accepted"
 	Rejected Status = "rejected"
@@ -17,7 +18,9 @@ const (
 )
 
 type ResponseStatus struct {
-	Status string `json:"status"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at,omitempty" bson:"created_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty" bson:"updated_at,omitempty"`
 }
 
 type CreateContact struct {
@@ -43,10 +46,10 @@ type DBContact struct {
 }
 
 type UserContact struct {
-	Name     string   `json:"name"`
-	Username string   `json:"username"`
-	Avatar   string   `json:"avatar"`
-	Contact  *Contact `json:"contact"`
+	Name     string          `json:"name"`
+	Username string          `json:"username"`
+	Avatar   string          `json:"avatar"`
+	Contact  *ResponseStatus `json:"contact"`
 }
 
 type DBUserContact struct {

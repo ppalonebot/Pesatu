@@ -21,7 +21,7 @@ type I_ContactRepo interface {
 	FindMyContactTo(myUid, to string) (*DBContact, error)
 	FindContactsRequest(toUid string, page, limit int) ([]*DBContact, error)
 	FindUserConnection(uidOwner, toUid string) (*DBUserContact, error)
-	FindUsersByName(uidOwner, name string, page, limit int) ([]*UserContact, error)
+	FindUsersByName(uidOwner, name, username string, page, limit int) ([]*UserContact, error)
 	FindUsersByUsername(uidOwner, name string, page, limit int) ([]*UserContact, error)
 }
 
@@ -296,13 +296,13 @@ func (me *ContactService) FindUsers(pipeline []primitive.M) ([]*UserContact, err
 	}
 
 	if len(ucontacts) == 0 {
-		return nil, fmt.Errorf("doesn't exist")
+		return []*UserContact{}, nil
 	}
 
 	return ucontacts, nil
 }
 
-func (me *ContactService) FindUsersByName(uidOwner, name string, page, limit int) ([]*UserContact, error) {
+func (me *ContactService) FindUsersByName(uidOwner, name, username string, page, limit int) ([]*UserContact, error) {
 	if page == 0 {
 		page = 1
 	}
@@ -314,7 +314,13 @@ func (me *ContactService) FindUsersByName(uidOwner, name string, page, limit int
 	skip := (page - 1) * limit
 
 	pipeline := []bson.M{
-		{"$match": bson.M{"name": bson.M{"$regex": fmt.Sprintf(".*%s.*", name)}}},
+		{"$match": bson.M{
+			"$or": []bson.M{
+				{"name": bson.M{"$regex": fmt.Sprintf(".*%s.*", name), "$options": "i"}},
+				{"username": bson.M{"$regex": fmt.Sprintf(".*%s.*", username)}},
+			},
+			"uid": bson.M{"$ne": uidOwner},
+		}},
 		{"$lookup": bson.M{
 			"from": "contact",
 			"let":  bson.M{"userUID": "$uid"},
@@ -353,7 +359,8 @@ func (me *ContactService) FindUsersByUsername(uidOwner, username string, page, l
 	skip := (page - 1) * limit
 
 	pipeline := []bson.M{
-		{"$match": bson.M{"username": bson.M{"$regex": fmt.Sprintf(".*%s.*", username)}}},
+		//{"$match": bson.M{"username": bson.M{"$regex": fmt.Sprintf(".*%s.*", username)}}},
+		{"$match": bson.M{"username": bson.M{"$regex": fmt.Sprintf(".*%s.*", username)}, "uid": bson.M{"$ne": uidOwner}}},
 		{"$lookup": bson.M{
 			"from": "contact",
 			"let":  bson.M{"userUID": "$uid"},
