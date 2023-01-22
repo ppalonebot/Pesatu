@@ -17,6 +17,15 @@ const (
 	Blocked  Status = "blocked"
 )
 
+var ValidStatuses = [5]Status{Waiting, Pending, Accepted, Rejected, Blocked}
+
+type SearchUser struct {
+	UID     string `json:"uid"`
+	Keyword string `json:"keyword"`
+	Status  string `json:"status"`
+	Page    string `json:"page"`
+	Limit   string `json:"limit"`
+}
 type ResponseStatus struct {
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at,omitempty" bson:"created_at,omitempty"`

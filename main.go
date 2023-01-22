@@ -13,6 +13,7 @@ import (
 	"pesatu/user"
 	"pesatu/userprofile"
 	"strings"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -121,11 +122,14 @@ func main() {
 	UserRouteController := user.NewUserRoute(mongoclient, ctx, logger, limiter)
 	UserRouteController.InitRouteTo(server)
 
-	ProfileRouteController := userprofile.NewProfileRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
-	ProfileRouteController.InitRouteTo(server)
-
 	UploadImageRouteCtr := images.NewUploadImageRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
 	UploadImageRouteCtr.InitRouteTo(server)
+
+	//for testing
+	server.Use(DelayMiddleware(2 * time.Second))
+
+	ProfileRouteController := userprofile.NewProfileRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
+	ProfileRouteController.InitRouteTo(server)
 
 	ContactRouteController := contacts.NewContactRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
 	ContactRouteController.InitRouteTo(server)
@@ -141,7 +145,7 @@ func redirectToAppMiddleware() gin.HandlerFunc {
 
 		u, err := url.Parse(c.Request.URL.String())
 		if err != nil {
-			logger.Error(err, "redirectinging errror")
+			logger.Error(err, "redirecting errror")
 			c.AbortWithStatus(http.StatusNotFound)
 			return
 		}
@@ -149,7 +153,7 @@ func redirectToAppMiddleware() gin.HandlerFunc {
 		// Get the path and query parameters from the original request
 		path := u.Path
 		if strings.Contains(path, ":") {
-			logger.Error(fmt.Errorf("path unsupported %s", path), "redirectinging errror")
+			logger.Error(fmt.Errorf("path unsupported %s", path), "redirecting errror")
 			c.AbortWithStatus(http.StatusNotFound)
 			return
 		}
@@ -166,5 +170,12 @@ func redirectToAppMiddleware() gin.HandlerFunc {
 		targetURL := "/app/#" + path + queryString
 		// Redirect to the target URL
 		c.Redirect(http.StatusMovedPermanently, targetURL)
+	}
+}
+
+func DelayMiddleware(duration time.Duration) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		time.Sleep(duration)
+		c.Next()
 	}
 }

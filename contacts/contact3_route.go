@@ -67,6 +67,8 @@ func (me *ContactRoute) RPCHandle(ctx *gin.Context) {
 		statuscode = me.method_SearchUser(ctx, &jreq, jres)
 	case "AddContact":
 		statuscode = me.method_AddContact(ctx, &jreq, jres)
+	// case "GetContacts":
+	// 	statuscode = me.method_GetContacts(ctx, &jreq, jres)
 	default:
 		jres.Error = &jsonrpc2.RPCError{Code: http.StatusMethodNotAllowed, Message: "method not allowed"}
 	}
@@ -90,7 +92,7 @@ func (me *ContactRoute) method_SearchUser(ctx *gin.Context, jreq *jsonrpc2.RPCRe
 		return http.StatusUnauthorized
 	}
 
-	var reg *user.SearchUser
+	var reg *SearchUser
 	err := json.Unmarshal(jreq.Params, &reg)
 	if err != nil {
 		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
@@ -112,7 +114,7 @@ func (me *ContactRoute) method_SearchUser(ctx *gin.Context, jreq *jsonrpc2.RPCRe
 		limit = "10"
 	}
 
-	res, e, code := me.contactController.SearchUsers(reg.Keyword, page, limit, reg.UID, validuser.GetCode())
+	res, e, code := me.contactController.SearchUsers(reg.Keyword, page, limit, reg.UID, reg.Status, validuser.GetCode())
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 

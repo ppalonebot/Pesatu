@@ -21,8 +21,8 @@ type I_ContactRepo interface {
 	FindMyContactTo(myUid, to string) (*DBContact, error)
 	FindContactsRequest(toUid string, page, limit int) ([]*DBContact, error)
 	FindUserConnection(uidOwner, toUid string) (*DBUserContact, error)
-	FindUsersByName(uidOwner, name, username string, page, limit int) ([]*UserContact, error)
-	FindUsersByUsername(uidOwner, name string, page, limit int) ([]*UserContact, error)
+	FindUsersByName(uidOwner, name, username, status string, page, limit int) ([]*UserContact, error)
+	FindUsersByUsername(uidOwner, name, status string, page, limit int) ([]*UserContact, error)
 }
 
 type ContactService struct {
@@ -302,7 +302,7 @@ func (me *ContactService) FindUsers(pipeline []primitive.M) ([]*UserContact, err
 	return ucontacts, nil
 }
 
-func (me *ContactService) FindUsersByName(uidOwner, name, username string, page, limit int) ([]*UserContact, error) {
+func (me *ContactService) FindUsersByName(uidOwner, name, username, status string, page, limit int) ([]*UserContact, error) {
 	if page == 0 {
 		page = 1
 	}
@@ -312,6 +312,15 @@ func (me *ContactService) FindUsersByName(uidOwner, name, username string, page,
 	}
 
 	skip := (page - 1) * limit
+
+	temp := []bson.M{
+		{"$eq": []interface{}{"$owner", "$$userUID"}},
+		{"$eq": []interface{}{"$to", uidOwner}},
+	}
+
+	if status != "" {
+		temp = append(temp, bson.M{"$eq": []interface{}{"$status", status}})
+	}
 
 	pipeline := []bson.M{
 		{"$match": bson.M{
@@ -326,10 +335,7 @@ func (me *ContactService) FindUsersByName(uidOwner, name, username string, page,
 			"let":  bson.M{"userUID": "$uid"},
 			"pipeline": []bson.M{
 				{"$match": bson.M{"$expr": bson.M{
-					"$and": []bson.M{
-						{"$eq": []interface{}{"$owner", "$$userUID"}},
-						{"$eq": []interface{}{"$to", uidOwner}},
-					},
+					"$and": temp,
 				}}},
 			},
 			"as": "temp_contact",
@@ -347,7 +353,7 @@ func (me *ContactService) FindUsersByName(uidOwner, name, username string, page,
 	return me.FindUsers(pipeline)
 }
 
-func (me *ContactService) FindUsersByUsername(uidOwner, username string, page, limit int) ([]*UserContact, error) {
+func (me *ContactService) FindUsersByUsername(uidOwner, username, status string, page, limit int) ([]*UserContact, error) {
 	if page == 0 {
 		page = 1
 	}
@@ -358,6 +364,15 @@ func (me *ContactService) FindUsersByUsername(uidOwner, username string, page, l
 
 	skip := (page - 1) * limit
 
+	temp := []bson.M{
+		{"$eq": []interface{}{"$owner", "$$userUID"}},
+		{"$eq": []interface{}{"$to", uidOwner}},
+	}
+
+	if status != "" {
+		temp = append(temp, bson.M{"$eq": []interface{}{"$status", status}})
+	}
+
 	pipeline := []bson.M{
 		//{"$match": bson.M{"username": bson.M{"$regex": fmt.Sprintf(".*%s.*", username)}}},
 		{"$match": bson.M{"username": bson.M{"$regex": fmt.Sprintf(".*%s.*", username)}, "uid": bson.M{"$ne": uidOwner}}},
@@ -366,10 +381,7 @@ func (me *ContactService) FindUsersByUsername(uidOwner, username string, page, l
 			"let":  bson.M{"userUID": "$uid"},
 			"pipeline": []bson.M{
 				{"$match": bson.M{"$expr": bson.M{
-					"$and": []bson.M{
-						{"$eq": []interface{}{"$owner", "$$userUID"}},
-						{"$eq": []interface{}{"$to", uidOwner}},
-					},
+					"$and": temp,
 				}}},
 			},
 			"as": "temp_contact",
