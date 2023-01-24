@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"pesatu/auth"
+	"pesatu/components/user"
 	"pesatu/jsonrpc2"
-	"pesatu/user"
 	"pesatu/utils"
 	"strconv"
 	"strings"
@@ -160,7 +160,7 @@ func (me *ContactController) SearchUsers(keyword, pageStr, limitStr, userUID, st
 	}
 
 	//handle for keyword empty
-	if len(keyword) == 0 || keyword == "@" {
+	if keyword == "@" {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid search input"}, http.StatusOK
 	}
 
@@ -201,7 +201,7 @@ func (me *ContactController) SearchUsers(keyword, pageStr, limitStr, userUID, st
 			keyword2 = "#ojan!"
 		}
 
-		if err != nil {
+		if err != nil && keyword != "" {
 			return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: fmt.Sprintf("invalid name input. %s", err.Error())}, http.StatusOK
 		}
 		usercontacts, err = me.contactService.FindUsersByName(user.UID, keyword, keyword2, status, intPage, intLimit)

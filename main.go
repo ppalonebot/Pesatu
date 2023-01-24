@@ -8,10 +8,10 @@ import (
 	"net/url"
 	"os"
 	"pesatu/auth"
-	"pesatu/contacts"
-	"pesatu/images"
-	"pesatu/user"
-	"pesatu/userprofile"
+	"pesatu/components/contacts"
+	"pesatu/components/images"
+	"pesatu/components/user"
+	"pesatu/components/userprofile"
 	"strings"
 	"time"
 
@@ -126,7 +126,7 @@ func main() {
 	UploadImageRouteCtr.InitRouteTo(server)
 
 	//for testing
-	server.Use(DelayMiddleware(2 * time.Second))
+	server.Use(DelayMiddleware(1 * time.Second))
 
 	ProfileRouteController := userprofile.NewProfileRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
 	ProfileRouteController.InitRouteTo(server)

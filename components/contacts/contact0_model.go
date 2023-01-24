@@ -1,7 +1,7 @@
 package contacts
 
 import (
-	"pesatu/user"
+	"pesatu/components/user"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -10,11 +10,11 @@ import (
 type Status = string
 
 const (
-	Waiting  Status = "waiting"
-	Pending  Status = "pending"
-	Accepted Status = "accepted"
-	Rejected Status = "rejected"
-	Blocked  Status = "blocked"
+	Accepted Status = "50_accepted"
+	Pending  Status = "40_pending"
+	Waiting  Status = "30_waiting"
+	Rejected Status = "20_rejected"
+	Blocked  Status = "10_blocked"
 )
 
 var ValidStatuses = [5]Status{Waiting, Pending, Accepted, Rejected, Blocked}

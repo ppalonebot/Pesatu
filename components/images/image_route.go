@@ -3,7 +3,7 @@ package images
 import (
 	"context"
 	"net/http"
-	"pesatu/user"
+	"pesatu/components/user"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-logr/logr"

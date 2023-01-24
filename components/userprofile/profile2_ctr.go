@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"pesatu/auth"
+	"pesatu/components/user"
 	"pesatu/jsonrpc2"
-	"pesatu/user"
 	"pesatu/utils"
 	"strings"
 	"time"
@@ -157,6 +157,32 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 	return &resUserProfile, nil, http.StatusCreated
 }
 
+func (me *ProfileController) FindProfile(validuser *auth.Claims, reg *GetProfileRequest) (*ResponseSeeOther, *jsonrpc2.RPCError, int) {
+	Logger.V(2).Info(fmt.Sprintf("find profile by username %s", reg.Username))
+
+	if validuser.GetUID() != reg.UID {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user uid did not match"}, http.StatusOK
+	}
+
+	ok := utils.IsValidUid(reg.UID)
+	if !ok {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid input owner"}, http.StatusOK
+	}
+
+	_, err := utils.IsValidUsername(reg.Username)
+	if err != nil {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error()}, http.StatusOK
+	}
+
+	profile, err := me.profileService.SeeOtherProfile(validuser.GetUID(), reg.Username)
+	if err != nil {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}, http.StatusOK
+	}
+
+	Logger.V(2).Info("found profile", profile.Username)
+	return profile, nil, http.StatusOK
+}
+
 func (me *ProfileController) FindMyProfile(validuser *auth.Claims, owner string) (*ResponseUserProfile, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("find profile by owner %s", owner))
 
@@ -239,8 +265,9 @@ func (me *ProfileController) GetUpdateAvatarToken(validuser *auth.Claims, reg *G
 	}
 
 	res := &GetProfileRequest{
-		UID: reg.UID,
-		JWT: token,
+		UID:      reg.UID,
+		Username: user.Username,
+		JWT:      token,
 	}
 
 	return res, nil, http.StatusOK

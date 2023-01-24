@@ -3,6 +3,7 @@ package userprofile
 import (
 	"context"
 	"errors"
+	"fmt"
 	"pesatu/utils"
 	"time"
 
@@ -18,15 +19,17 @@ type I_ProfileRepo interface {
 	FindProfileByOwner(owner string) (*DBProfile, error)
 	FindProfiles(page int, limit int) ([]*DBProfile, error)
 	DeleteProfile(obId primitive.ObjectID) error
+	SeeOtherProfile(uidOwner, toUsername string) (*ResponseSeeOther,error)
 }
 
 type ProfileService struct {
-	collection *mongo.Collection
-	ctx        context.Context
+	userCollection *mongo.Collection
+	collection     *mongo.Collection
+	ctx            context.Context
 }
 
-func NewProfileService(profileCollection *mongo.Collection, ctx context.Context) I_ProfileRepo {
-	return &ProfileService{collection: profileCollection, ctx: ctx}
+func NewProfileService(userCollection *mongo.Collection, profileCollection *mongo.Collection, ctx context.Context) I_ProfileRepo {
+	return &ProfileService{userCollection, profileCollection, ctx}
 }
 
 func (p *ProfileService) CreateProfile(newProfile *CreateProfile) (*DBProfile, error) {
@@ -156,4 +159,76 @@ func (p *ProfileService) DeleteProfile(obId primitive.ObjectID) error {
 	}
 
 	return nil
+}
+
+func (me *ProfileService) SeeOtherProfile(uidOwner, toUsername string) (*ResponseSeeOther, error) {
+	pipeline := []bson.M{
+		{"$match": bson.M{"username": bson.M{"$eq": toUsername}}},
+		{"$lookup": bson.M{
+			"from":         "profiles",
+			"localField":   "owner",
+			"foreignField": "uid",
+			"as":           "profile",
+		}},
+		{"$lookup": bson.M{
+			"from": "contact",
+			"let":  bson.M{"userUID": "$uid"},
+			"pipeline": []bson.M{
+				{"$match": bson.M{"$expr": bson.M{
+					"$and": []bson.M{
+						{"$eq": []interface{}{"$owner", "$$userUID"}},
+						{"$eq": []interface{}{"$to", uidOwner}},
+					},
+				}}},
+			},
+			"as": "temp_contact",
+		}},
+		{"$addFields": bson.M{
+			"contact": bson.M{"$arrayElemAt": []interface{}{"$temp_contact", 0}},
+		}},
+		{"$project": bson.M{
+			"temp_contact": 0,
+		}},
+		{"$unwind": "$profile"},
+		{"$project": bson.M{
+			"_id":        0,
+			"name":       "$name",
+			"username":   "$username",
+			"email":      "$email",
+			"status":     "$profile.status",
+			"bio":        "$profile.bio",
+			"avatar":     "$avatar",
+			"created_at": "$created_at",
+			"updated_at": "$updated_at",
+			"contact":    "$contact",
+		}},
+		{"$limit": 1},
+	}
+
+	cursor, err := me.userCollection.Aggregate(me.ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(me.ctx)
+
+	var result []*ResponseSeeOther
+	for cursor.Next(me.ctx) {
+		ctt := &ResponseSeeOther{}
+		err := cursor.Decode(ctt)
+
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, ctt)
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("doesn't exist")
+	}
+
+	return result[0], nil
 }

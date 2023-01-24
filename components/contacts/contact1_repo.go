@@ -343,12 +343,21 @@ func (me *ContactService) FindUsersByName(uidOwner, name, username, status strin
 		{"$addFields": bson.M{
 			"contact": bson.M{"$arrayElemAt": []interface{}{"$temp_contact", 0}},
 		}},
+		{"$sort": bson.M{
+			"contact.status": -1,
+			"name":           1,
+		}},
 		{"$project": bson.M{
 			"temp_contact": 0,
 		}},
 		{"$skip": skip},
 		{"$limit": limit},
 	}
+
+	if status != "" {
+		pipeline = append(pipeline, bson.M{"$match": bson.M{"contact": bson.M{"$ne": nil}}})
+	}
+	// pipeline = append(pipeline, bson.M{"$skip": skip}, bson.M{"$limit": limit})
 
 	return me.FindUsers(pipeline)
 }
@@ -389,12 +398,21 @@ func (me *ContactService) FindUsersByUsername(uidOwner, username, status string,
 		{"$addFields": bson.M{
 			"contact": bson.M{"$arrayElemAt": []interface{}{"$temp_contact", 0}},
 		}},
+		{"$sort": bson.M{
+			"contact.status": -1,
+		}},
 		{"$project": bson.M{
 			"temp_contact": 0,
 		}},
+
 		{"$skip": skip},
 		{"$limit": limit},
 	}
+
+	if status != "" {
+		pipeline = append(pipeline, bson.M{"$match": bson.M{"contact": bson.M{"$ne": nil}}})
+	}
+	// pipeline = append(pipeline, bson.M{"$skip": skip}, bson.M{"$limit": limit})
 
 	return me.FindUsers(pipeline)
 }

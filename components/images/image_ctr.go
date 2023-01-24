@@ -6,7 +6,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"pesatu/auth"
-	"pesatu/user"
+	"pesatu/components/user"
 	"pesatu/utils"
 	"strconv"
 	"strings"

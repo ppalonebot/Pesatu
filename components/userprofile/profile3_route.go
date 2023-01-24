@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"pesatu/auth"
+	"pesatu/components/user"
 	"pesatu/jsonrpc2"
-	"pesatu/user"
 	"pesatu/utils"
 
 	"github.com/gin-gonic/gin"
@@ -27,7 +27,7 @@ func NewProfileRoute(mongoclient *mongo.Client, ctx context.Context, l logr.Logg
 	Logger = l
 	Logger.V(2).Info("NewProfileRoute created")
 	collection := mongoclient.Database("pesatu").Collection("profiles")
-	service := NewProfileService(collection, ctx)
+	service := NewProfileService(userService.GetCollection(), collection, ctx)
 	controller := NewProfileController(userService, service)
 	return ProfileRoute{controller, limiter}
 }
@@ -65,6 +65,8 @@ func (me *ProfileRoute) RPCHandle(ctx *gin.Context) {
 	switch jreq.Method {
 	case "GetMyProfile":
 		statuscode = me.method_GetMyProfile(ctx, &jreq, jres)
+	case "GetProfile":
+		statuscode = me.method_GetProfile(ctx, &jreq, jres)
 	case "GetUpdateAvatarToken":
 		statuscode = me.method_GetUpdateAvatarToken(ctx, &jreq, jres)
 	case "UpdateMyProfile":
@@ -100,6 +102,33 @@ func (me *ProfileRoute) method_GetMyProfile(ctx *gin.Context, jreq *jsonrpc2.RPC
 	}
 
 	res, e, code := me.controller.FindMyProfile(validuser, reg.UID)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *ProfileRoute) method_GetProfile(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
+	var reg *GetProfileRequest
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	validuser := vuser.(*auth.Claims)
+	if validuser.IsExpired() {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
+	}
+
+	res, e, code := me.controller.FindProfile(validuser, reg)
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 

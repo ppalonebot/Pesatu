@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"pesatu/auth"
 	"pesatu/jsonrpc2"
-	"pesatu/user"
+	"pesatu/components/user"
 	"pesatu/utils"
 
 	"github.com/gin-gonic/gin"

@@ -1,14 +1,16 @@
 package userprofile
 
 import (
+	"pesatu/components/contacts"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type GetProfileRequest struct {
-	UID string `json:"uid"`
-	JWT string `json:"jwt"`
+	UID      string `json:"uid"`
+	Username string `json:"username"`
+	JWT      string `json:"jwt"`
 }
 type UpdateUserProfile struct {
 	UID      string `json:"uid"`
@@ -46,6 +48,18 @@ type CreateProfile struct {
 	PPic      string    `json:"ppic" bson:"ppic"`
 	CreatedAt time.Time `json:"created_at,omitempty" bson:"created_at,omitempty"`
 	UpdatedAt time.Time `json:"updated_at,omitempty" bson:"updated_at,omitempty"`
+}
+
+type ResponseSeeOther struct {
+	Name      string                   `json:"name"`
+	Username  string                   `json:"username"`
+	Email     string                   `json:"email"`
+	Status    string                   `json:"status"`
+	Bio       string                   `json:"bio"`
+	Avatar    string                   `json:"avatar"`
+	CreatedAt time.Time                `json:"created_at"`
+	UpdatedAt time.Time                `json:"updated_at"`
+	Contact   *contacts.ResponseStatus `json:"contact"`
 }
 
 type DBProfile struct {
