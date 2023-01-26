@@ -10,14 +10,32 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/asaskevich/govalidator"
+	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 )
+
+var logger logr.Logger = logr.Discard()
+
+func InitLogger(l logr.Logger) {
+	logger = l
+}
+
+func Log() logr.Logger {
+	return logger
+}
+
+func JoinAndSort(a, b string, delimiter string) string {
+	s := []string{a, b}
+	sort.Strings(s)
+	return s[0] + delimiter + s[1]
+}
 
 func GenerateRandomNumber() string {
 	rand.Seed(time.Now().UnixNano())

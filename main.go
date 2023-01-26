@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"pesatu/app/chat"
 	"pesatu/auth"
 	"pesatu/components/contacts"
 	"pesatu/components/images"
 	"pesatu/components/user"
 	"pesatu/components/userprofile"
+	"pesatu/utils"
 	"strings"
 	"time"
 
@@ -70,6 +72,8 @@ func main() {
 
 	logger.Info(fmt.Sprintf("verbosity level is: %d", verbosityLevel))
 	log.SetGlobalOptions(log.GlobalConfig{V: verbosityLevel})
+
+	utils.InitLogger(logger)
 
 	ctx = context.TODO()
 	// // Set up context and options for connecting to MongoDB
@@ -133,6 +137,11 @@ func main() {
 
 	ContactRouteController := contacts.NewContactRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
 	ContactRouteController.InitRouteTo(server)
+
+	//app:
+	wsServer := chat.NewWebsocketServer(mongoclient, ctx)
+	wsServer.InitRouteTo(server)
+	go wsServer.Run()
 
 	// Use the redirectToAppMiddleware middleware to wrap the handler
 	server.Use(redirectToAppMiddleware())

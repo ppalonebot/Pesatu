@@ -243,6 +243,7 @@ func (me *ContactService) FindUserConnection(uidOwner, toUsername string) (*DBUs
 		{"$project": bson.M{
 			"temp_contact": 0,
 		}},
+		{"$limit": 1},
 	}
 
 	cursor, err := me.userCollection.Aggregate(me.ctx, pipeline)
