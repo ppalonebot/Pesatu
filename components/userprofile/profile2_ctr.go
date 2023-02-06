@@ -42,9 +42,9 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 	if !user.Reg.Registered {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user unregistered"}, http.StatusOK
 	}
-	if user.Reg.Code != validuser.GetCode() {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
-	}
+	// if user.Reg.Code != validuser.GetCode() {
+	// 	return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
+	// }
 
 	profile, err := me.profileService.FindProfileByOwner(user.UID)
 	if err != nil {
@@ -205,9 +205,9 @@ func (me *ProfileController) FindMyProfile(validuser *auth.Claims, owner string)
 	if !user.Reg.Registered {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user unregistered"}, http.StatusOK
 	}
-	if user.Reg.Code != validuser.GetCode() {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
-	}
+	// if user.Reg.Code != validuser.GetCode() {
+	// 	return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
+	// }
 
 	profile, err := me.profileService.FindProfileByOwner(owner)
 	if err != nil {
@@ -249,9 +249,9 @@ func (me *ProfileController) GetUpdateAvatarToken(validuser *auth.Claims, reg *G
 	if !user.Reg.Registered {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user unregistered"}, http.StatusOK
 	}
-	if user.Reg.Code != validuser.GetCode() {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
-	}
+	// if user.Reg.Code != validuser.GetCode() {
+	// 	return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
+	// }
 
 	code := user.Avatar
 	if len(code) == 0 {
@@ -261,6 +261,46 @@ func (me *ProfileController) GetUpdateAvatarToken(validuser *auth.Claims, reg *G
 	token, err := auth.CreateJWTWithExpire(user.UID, user.Username, "UpdateAvatar", code, time.Minute*3)
 	if err != nil {
 		Logger.Error(err, "internal error, while creating token")
+		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
+	}
+
+	res := &GetProfileRequest{
+		UID:      reg.UID,
+		Username: user.Username,
+		JWT:      token,
+	}
+
+	return res, nil, http.StatusOK
+}
+
+func (me *ProfileController) GetWebsocketToken(validuser *auth.Claims, reg *GetProfileRequest) (*GetProfileRequest, *jsonrpc2.RPCError, int) {
+	Logger.V(2).Info("get websocket token", reg.UID)
+	if validuser.GetUID() != reg.UID {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user uid did not match"}, http.StatusOK
+	}
+
+	ok := utils.IsValidUid(reg.UID)
+	if !ok {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "forbidden, invalid input owner"}, http.StatusOK
+	}
+
+	user, err := me.userService.FindUserById(validuser.GetUID())
+	if err != nil {
+		if strings.Contains(err.Error(), "exists") {
+			return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
+		}
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
+	}
+	if !user.Reg.Registered {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user unregistered"}, http.StatusOK
+	}
+	// if user.Reg.Code != validuser.GetCode() {
+	// 	return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
+	// }
+
+	token, err := auth.CreateJWTWithExpire(user.UID, user.Username, "socket", user.Reg.Code, time.Minute*3)
+	if err != nil {
+		Logger.Error(err, "internal error, while creating websocket token")
 		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
 	}
 

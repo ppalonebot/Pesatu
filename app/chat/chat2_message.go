@@ -6,10 +6,10 @@ import (
 )
 
 type Message struct {
-	Action  string `json:"action"`
-	Message string `json:"message"`
-	Target  *Room  `json:"target"`
-	Sender  I_User `json:"sender"`
+	Action  string      `json:"action"`
+	Message string      `json:"message"`
+	Target  *Room       `json:"target"`
+	Sender  interface{} `json:"sender"`
 }
 
 func (message *Message) encode() []byte {

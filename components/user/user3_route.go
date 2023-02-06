@@ -216,9 +216,9 @@ func (me *UserRoute) method_RefreshToken(ctx *gin.Context, jreq *jsonrpc2.RPCReq
 		return http.StatusBadRequest
 	}
 
-	res, e, code := me.userController.FindUserById(reg.UID, validuser.GetCode())
+	res, e, code := me.userController.FindUserById(reg.UID)
 	if e == nil {
-		res.JWT, _ = auth.CreateJWTToken(reg.UID, res.Username, validuser.GetCode())
+		res.JWT, _ = auth.CreateJWTToken(reg.UID, res.Username, "")
 	}
 	res = CheckAllowCredentials(ctx, res, code)
 	jres.Result, _ = utils.ToRawMessage(res)
@@ -343,7 +343,7 @@ func (me *UserRoute) method_ResetPassword(ctx *gin.Context, jreq *jsonrpc2.RPCRe
 		return http.StatusBadRequest
 	}
 
-	res, e, code := me.userController.ResetPassword(validuser.GetUID(), reg.Password, validuser.GetCode())
+	res, e, code := me.userController.ResetPassword(validuser.GetUID(), reg.Password)
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 
@@ -375,7 +375,7 @@ func (me *UserRoute) method_GetSelf(ctx *gin.Context, jreq *jsonrpc2.RPCRequest,
 		return http.StatusBadRequest
 	}
 
-	res, e, code := me.userController.FindUserById(reg.UID, validuser.GetCode())
+	res, e, code := me.userController.FindUserById(reg.UID)
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 
@@ -417,7 +417,7 @@ func (me *UserRoute) method_SearchUser(ctx *gin.Context, jreq *jsonrpc2.RPCReque
 		limit = "10"
 	}
 
-	res, e, code := me.userController.SearchUsers(reg.Keyword, page, limit, reg.UID, validuser.GetCode())
+	res, e, code := me.userController.SearchUsers(reg.Keyword, page, limit, reg.UID)
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 

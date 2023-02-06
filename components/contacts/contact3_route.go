@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"pesatu/auth"
-	"pesatu/jsonrpc2"
 	"pesatu/components/user"
+	"pesatu/jsonrpc2"
 	"pesatu/utils"
 
 	"github.com/gin-gonic/gin"
@@ -45,6 +45,10 @@ func (me *ContactRoute) RateLimit(ctx *gin.Context) {
 		return
 	}
 	ctx.Next()
+}
+
+func (me *ContactRoute) GetContactService() I_ContactRepo {
+	return me.contactController.contactService
 }
 
 func (me *ContactRoute) RPCHandle(ctx *gin.Context) {
@@ -114,7 +118,7 @@ func (me *ContactRoute) method_SearchUser(ctx *gin.Context, jreq *jsonrpc2.RPCRe
 		limit = "10"
 	}
 
-	res, e, code := me.contactController.SearchUsers(reg.Keyword, page, limit, reg.UID, reg.Status, validuser.GetCode())
+	res, e, code := me.contactController.SearchUsers(reg.Keyword, page, limit, reg.UID, reg.Status)
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 

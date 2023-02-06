@@ -108,16 +108,29 @@ func AuthMiddleware() gin.HandlerFunc {
 			token, _ = c.Cookie("jwt")
 		}
 
+		socketFlag := false
+		if len(token) == 0 {
+			token = c.Query("jwt")
+			socketFlag = len(token) > 0
+		}
+
 		if len(token) == 0 {
 			c.Next()
 			return
 		}
 
 		validuser, _ := ValidateToken(token)
-		if validuser != nil {
-			c.Set("validuser", validuser)
+		if validuser == nil {
+			c.Next()
+			return
 		}
 
+		if socketFlag && validuser.Cmd != "socket" {
+			c.Next()
+			return
+		}
+
+		c.Set("validuser", validuser)
 		c.Next()
 	}
 }

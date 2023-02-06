@@ -2,6 +2,8 @@ package chat
 
 import (
 	"context"
+	"fmt"
+	"pesatu/components/contacts"
 	"pesatu/components/room"
 	"pesatu/utils"
 
@@ -41,9 +43,9 @@ func NewWebsocketServer(mongoclient *mongo.Client, ctx context.Context /*, userR
 	return wsServer
 }
 
-func (me *WsServer) InitRouteTo(rg *gin.Engine) {
+func (me *WsServer) InitRouteTo(rg *gin.Engine, contactRepo contacts.I_ContactRepo, devmode int) {
 	rg.GET("/ws", func(c *gin.Context) {
-		ServeWs(me, c)
+		ServeWs(me, c, contactRepo, devmode)
 	})
 }
 
@@ -69,8 +71,6 @@ func (server *WsServer) Run() {
 
 // add new client connection
 func (server *WsServer) registerClient(client *Client) {
-	utils.Log().V(2).Info("new connection", client.Name, "@", client.conn.RemoteAddr().String())
-
 	server.notifyClientJoined(client)
 
 	//todo Publish user in PubSub
@@ -79,7 +79,7 @@ func (server *WsServer) registerClient(client *Client) {
 	server.listOnlineClients(client)
 	server.clients[client] = true
 
-	utils.Log().V(2).Info("registered", client.Name, "id:", client.ID.String())
+	utils.Log().V(2).Info(fmt.Sprintf("registered %s id: %s", client.GetUsername(), client.GetUID()))
 }
 
 // remove client connection
@@ -94,7 +94,7 @@ func (server *WsServer) unregisterClient(client *Client) {
 		//todo: Publish user left in PubSub
 		//server.publishClientLeft(client)
 
-		utils.Log().V(2).Info("del connection ", client.Name, "@", client.conn.RemoteAddr().String())
+		utils.Log().V(2).Info(fmt.Sprintf("del connection %s @%s", client.Name, client.conn.RemoteAddr().String()))
 	}
 }
 
@@ -115,7 +115,7 @@ func (server *WsServer) notifyClientJoined(client *Client) {
 		Action: UserJoinedAction,
 		Sender: client,
 	}
-	utils.Log().V(2).Info("notify User Joined", client.Name, "to")
+	utils.Log().V(2).Info(fmt.Sprintf("notify User Joined %s to", client.Name))
 	server.broadcastToClients(message.encode())
 }
 
@@ -139,7 +139,7 @@ func (server *WsServer) notifyClientLeft(client *Client) {
 		Sender: client,
 	}
 
-	utils.Log().V(2).Info("notify User Left", client.Name, "to")
+	utils.Log().V(2).Info(fmt.Sprintf("notify User Left %s to", client.Name))
 	server.broadcastToClients(message.encode())
 }
 
@@ -172,14 +172,14 @@ func (server *WsServer) notifyClientLeft(client *Client) {
 
 func (server *WsServer) handleUserJoined(message Message) {
 	// Add the user to the slice
-	server.users = append(server.users, message.Sender)
+	server.users = append(server.users, message.Sender.(I_User))
 	server.broadcastToClients(message.encode())
 }
 
 func (server *WsServer) handleUserLeft(message Message) {
 	// Remove the user from the slice
 	for i, user := range server.users {
-		if user.GetUID() == message.Sender.GetUID() {
+		if user.GetUID() == message.Sender.(I_User).GetUID() {
 			server.users[i] = server.users[len(server.users)-1]
 			server.users = server.users[:len(server.users)-1]
 			break // added this break to only remove the first occurrence
@@ -196,7 +196,7 @@ func (server *WsServer) handleUserJoinPrivate(message Message) {
 	// 	targetClient.joinRoom(message.Target.GetName(), message.Sender)
 	// }
 	for _, targetClient := range targetClients {
-		_ = targetClient.joinRoom(message.Target.GetName(), message.Sender)
+		_ = targetClient.joinRoom(message.Target.GetName(), message.Sender.(I_User))
 	}
 }
 
@@ -208,7 +208,7 @@ func (server *WsServer) listOnlineClients(client *Client) {
 				Action: UserJoinedAction,
 				Sender: user,
 			}
-			utils.Log().V(2).Info("Tell", client.Name, "existing User Joined", user.GetUsername(), "id:", user.GetUID())
+			utils.Log().V(2).Info(fmt.Sprintf("Tell %s existing User Joined %s id:%s", client.Name, user.GetUsername(), user.GetUID()))
 			uniqueUsers[user.GetUID()] = true
 			client.send <- message.encode()
 		}
@@ -217,7 +217,7 @@ func (server *WsServer) listOnlineClients(client *Client) {
 
 func (server *WsServer) broadcastToClients(message []byte) {
 	for client := range server.clients {
-		utils.Log().V(2).Info("\tBroadcast []byte :", client.Name, "@", client.conn.RemoteAddr().String())
+		utils.Log().V(2).Info(fmt.Sprintf("\tBroadcast []byte :%s @ %s", client.Name, client.conn.RemoteAddr().String()))
 		client.send <- message
 	}
 
@@ -287,7 +287,7 @@ func (server *WsServer) createRoom(name string, private bool) *Room {
 
 	go newRoom.RunRoom()
 	server.rooms[newRoom] = true
-	utils.Log().V(2).Info("room", name, "is created, id:", newRoom.GetId())
+	utils.Log().V(2).Info(fmt.Sprintf("room %s is created, id: %s", name, newRoom.GetId()))
 
 	return newRoom
 }

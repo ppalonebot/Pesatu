@@ -2,8 +2,6 @@ package chat
 
 import (
 	"time"
-
-	"github.com/gorilla/websocket"
 )
 
 const (
@@ -35,12 +33,8 @@ const (
 	UserLeftAction        Action = "user-left"
 	JoinRoomPrivateAction Action = "join-room-private"
 	RoomJoinedAction      Action = "room-joined"
+	Info                  Action = "info"
 )
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
 
 type I_User interface {
 	GetUID() string

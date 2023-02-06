@@ -118,7 +118,7 @@ func (me *UserController) Register(regUser *CreateUserRequest) (*ResponseUser, *
 	return &resUser, nil, http.StatusCreated
 }
 
-func (me *UserController) ResetPassword(uid, newPassword, code string) (*ResponseStatus, *jsonrpc2.RPCError, int) {
+func (me *UserController) ResetPassword(uid, newPassword string) (*ResponseStatus, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("reset password %s", uid))
 
 	ok := utils.IsValidUid(uid)
@@ -136,9 +136,9 @@ func (me *UserController) ResetPassword(uid, newPassword, code string) (*Respons
 		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
 	}
 
-	if user.Reg.Code != code {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: "invalid jwt"}, http.StatusOK
-	}
+	// if user.Reg.Code != code {
+	// 	return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: "invalid jwt"}, http.StatusOK
+	// }
 
 	password, _ := auth.GeneratePassword(newPassword)
 	user.Password = password
@@ -387,7 +387,7 @@ func (me *UserController) ValidateToken(jwt string) (*auth.Claims, error) {
 	}
 }
 
-func (me *UserController) FindUserById(userUID, code string) (*ResponseUser, *jsonrpc2.RPCError, int) {
+func (me *UserController) FindUserById(userUID string) (*ResponseUser, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("find a user by uid %s", userUID))
 
 	ok := utils.IsValidUid(userUID)
@@ -404,9 +404,9 @@ func (me *UserController) FindUserById(userUID, code string) (*ResponseUser, *js
 		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
 	}
 
-	if user.Reg.Code != code {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
-	}
+	// if user.Reg.Code != code {
+	// 	return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
+	// }
 
 	var resUser ResponseUser
 	utils.CopyStruct(user, &resUser)
@@ -416,7 +416,7 @@ func (me *UserController) FindUserById(userUID, code string) (*ResponseUser, *js
 	return &resUser, nil, http.StatusOK
 }
 
-func (me *UserController) SearchUsers(keyword, pageStr, limitStr, userUID, code string) ([]*ResponseUserShort, *jsonrpc2.RPCError, int) {
+func (me *UserController) SearchUsers(keyword, pageStr, limitStr, userUID string) ([]*ResponseUserShort, *jsonrpc2.RPCError, int) {
 	var page = pageStr
 	var limit = limitStr
 
@@ -440,7 +440,7 @@ func (me *UserController) SearchUsers(keyword, pageStr, limitStr, userUID, code 
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "uid invalid"}, http.StatusOK
 	}
 
-	user, err := me.userService.FindUserById(userUID)
+	_, err = me.userService.FindUserById(userUID)
 	if err != nil {
 		if strings.Contains(err.Error(), "exists") {
 			return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
@@ -448,9 +448,9 @@ func (me *UserController) SearchUsers(keyword, pageStr, limitStr, userUID, code 
 		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
 	}
 
-	if user.Reg.Code != code {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
-	}
+	// if user.Reg.Code != code {
+	// 	return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
+	// }
 
 	var users []*DBUser
 	if strings.HasPrefix(keyword, "@") {

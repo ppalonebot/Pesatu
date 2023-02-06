@@ -2,8 +2,10 @@ package chat
 
 import (
 	"encoding/json"
-	"log"
+	"fmt"
+	"net/http"
 	"pesatu/auth"
+	"pesatu/components/contacts"
 	"pesatu/utils"
 	"time"
 
@@ -15,21 +17,23 @@ import (
 // Client represents the websocket client at the server
 type Client struct {
 	// The actual websocket connection.
-	conn     *websocket.Conn
-	wsServer *WsServer
-	send     chan []byte
-	ID       uuid.UUID `json:"id"`
-	Name     string    `json:"name"`
-	rooms    map[*Room]bool
+	conn           *websocket.Conn
+	wsServer       *WsServer
+	send           chan []byte
+	ID             uuid.UUID `json:"id"`
+	Name           string    `json:"name"`
+	rooms          map[*Room]bool
+	contactService contacts.I_ContactRepo
 }
 
-func newClient(conn *websocket.Conn, wsServer *WsServer, username string, ID string) *Client {
+func newClient(conn *websocket.Conn, wsServer *WsServer, username string, ID string, contactRepo contacts.I_ContactRepo) *Client {
 	client := &Client{
-		Name:     username,
-		conn:     conn,
-		wsServer: wsServer,
-		send:     make(chan []byte, 256),
-		rooms:    make(map[*Room]bool),
+		Name:           username,
+		conn:           conn,
+		wsServer:       wsServer,
+		send:           make(chan []byte, 256),
+		rooms:          make(map[*Room]bool),
+		contactService: contactRepo,
 	}
 
 	if ID != "" {
@@ -40,7 +44,7 @@ func newClient(conn *websocket.Conn, wsServer *WsServer, username string, ID str
 }
 
 // ServeWs handles websocket requests from clients requests.
-func ServeWs(wsServer *WsServer, c *gin.Context) {
+func ServeWs(wsServer *WsServer, c *gin.Context, contactRepo contacts.I_ContactRepo, devmode int) {
 	userCtxValue, ok := c.Get("validuser")
 	if !ok {
 		utils.Log().Info("Not authenticated")
@@ -48,6 +52,23 @@ func ServeWs(wsServer *WsServer, c *gin.Context) {
 	}
 
 	user := userCtxValue.(*auth.Claims)
+	if user.IsExpired() {
+		utils.Log().Info("User token expired")
+		return
+	}
+
+	var upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+	}
+
+	if devmode > 0 {
+		upgrader.CheckOrigin = func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			return origin == "http://localhost:3000"
+			// return true
+		}
+	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -55,7 +76,7 @@ func ServeWs(wsServer *WsServer, c *gin.Context) {
 		return
 	}
 
-	client := newClient(conn, wsServer, user.GetUsername(), user.GetUID())
+	client := newClient(conn, wsServer, user.GetUsername(), user.GetUID(), contactRepo)
 
 	go client.writeThread()
 	go client.readThread()
@@ -162,7 +183,7 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 	case SendMessageAction:
 		roomID := message.Target.GetId()
 		if room := me.wsServer.findRoomByID(roomID); room != nil {
-			utils.Log().Info("new msg in room " + room.Name)
+			utils.Log().Info(fmt.Sprintf("new msg in room %s", room.GetName()))
 			room.broadcast <- &message
 		}
 
@@ -174,6 +195,9 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 
 	case JoinRoomPrivateAction:
 		me.handleJoinRoomPrivateMessage(message)
+
+	case Info:
+		me.handleInfoMessage(message)
 	}
 }
 
@@ -184,7 +208,7 @@ func (me *Client) handleJoinRoomMessage(message Message) {
 }
 
 func (me *Client) handleLeaveRoomMessage(message Message) {
-	utils.Log().V(2).Info("get request Leave Room from", me.Name)
+	utils.Log().V(2).Info(fmt.Sprintf("get request Leave Room from %s", me.Name))
 
 	//message was room's name
 	room := me.wsServer.findRoomByID(message.Message)
@@ -194,20 +218,81 @@ func (me *Client) handleLeaveRoomMessage(message Message) {
 
 	if _, ok := me.rooms[room]; ok {
 		delete(me.rooms, room)
-		utils.Log().V(2).Info(me.Name, "leave room", room.Name)
+		utils.Log().V(2).Info(fmt.Sprintf("%s leave room %s", me.Name, room.Name))
 	}
 
 	room.unregister <- me
 }
 
+func (me *Client) handleInfoMessage(message Message) {
+	_, err := utils.IsValidUsername(message.Message)
+	if err != nil {
+		utils.Log().Error(err, "get target info error while checking target username")
+		return
+	}
+
+	targetuser, err := me.contactService.FindUserConnection(me.GetUID(), message.Message)
+	if err != nil {
+		utils.Log().Error(err, "get target info can not find requested user to check connnection")
+		return
+	}
+
+	if targetuser.Contact.Status != contacts.Accepted {
+		utils.Log().Info("get target info but you are not in their contact")
+		return
+	}
+
+	userContact := &contacts.UserContact{
+		Name:     targetuser.Name,
+		Username: targetuser.Username,
+		Avatar:   targetuser.Avatar,
+		Contact: &contacts.ResponseStatus{
+			Status:    targetuser.Contact.Status,
+			UpdatedAt: targetuser.Contact.UpdatedAt,
+			CreatedAt: targetuser.Contact.CreatedAt,
+		},
+	}
+
+	me.notifyInfo("target info", userContact)
+}
+
 func (me *Client) handleJoinRoomPrivateMessage(message Message) {
-	target := me.wsServer.findUserByID(message.Message)
+	_, err := utils.IsValidUsername(message.Message)
+	if err != nil {
+		utils.Log().Error(err, "Join Room Private error while checking target username")
+		return
+	}
+
+	targetuser, err := me.contactService.FindUserConnection(me.GetUID(), message.Message)
+	if err != nil {
+		utils.Log().Error(err, "Join Room Private but can not find requested user to check connnection")
+		return
+	}
+
+	if targetuser.Contact.Status != contacts.Accepted {
+		utils.Log().Info("Join Room Private but you are not in their contact")
+		return
+	}
+
+	target := me.wsServer.findUserByID(targetuser.UID)
 
 	//todo next
 	//target := me.wsServer.findUserByID(message.Message)
 
 	if target == nil {
-		utils.Log().V(2).Info("get request Join Room Private from", me.GetUsername(), "to none, target unavailable")
+		utils.Log().Info(fmt.Sprintf("get request Join Room Private from %s to none, target unavailable", me.GetUsername()))
+		userContact := &contacts.UserContact{
+			Name:     targetuser.Name,
+			Username: targetuser.Username,
+			Avatar:   targetuser.Avatar,
+			Contact: &contacts.ResponseStatus{
+				Status:    targetuser.Contact.Status,
+				UpdatedAt: targetuser.Contact.UpdatedAt,
+				CreatedAt: targetuser.Contact.CreatedAt,
+			},
+		}
+
+		me.notifyInfo("target offline", userContact)
 		return
 	}
 
@@ -241,9 +326,9 @@ func (me *Client) joinRoom(roomName string, sender I_User) *Room {
 	}
 
 	if sender != nil {
-		utils.Log().V(2).Info(me.Name, "Join Room", roomName, "id:", room.GetId(), "sender:", sender.GetUsername())
+		utils.Log().V(2).Info(fmt.Sprintf("%s Join Room %s id:%s sender:%s", me.Name, roomName, room.GetId(), sender.GetUsername()))
 	} else {
-		utils.Log().V(2).Info(me.Name, "Join Room", roomName, "id:", room.GetId())
+		utils.Log().V(2).Info(fmt.Sprintf("%s Join Room %s id: %s", me.Name, roomName, room.GetId()))
 	}
 
 	if !me.isInRoom(room) {
@@ -284,6 +369,16 @@ func (me *Client) notifyRoomJoined(room *Room, sender I_User) {
 		Target: room,
 		Sender: sender,
 	}
-	log.Println("notify Room Joined,", me.Name, "is registered in room", room.Name)
+	utils.Log().V(2).Info("notify Room Joined,", me.Name, "is registered in room", room.Name)
+	me.send <- message.encode()
+}
+
+func (me *Client) notifyInfo(msg string, sender interface{}) {
+	message := Message{
+		Action:  Info,
+		Target:  nil,
+		Sender:  sender,
+		Message: msg,
+	}
 	me.send <- message.encode()
 }

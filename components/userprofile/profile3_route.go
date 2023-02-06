@@ -69,6 +69,8 @@ func (me *ProfileRoute) RPCHandle(ctx *gin.Context) {
 		statuscode = me.method_GetProfile(ctx, &jreq, jres)
 	case "GetUpdateAvatarToken":
 		statuscode = me.method_GetUpdateAvatarToken(ctx, &jreq, jres)
+	case "GetWebsocketToken":
+		statuscode = me.method_GetWebsocketToken(ctx, &jreq, jres)
 	case "UpdateMyProfile":
 		statuscode = me.method_UpdateMyProfile(ctx, &jreq, jres)
 	default:
@@ -183,6 +185,33 @@ func (me *ProfileRoute) method_GetUpdateAvatarToken(ctx *gin.Context, jreq *json
 	}
 
 	res, e, code := me.controller.GetUpdateAvatarToken(validuser, reg)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *ProfileRoute) method_GetWebsocketToken(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
+	validuser := vuser.(*auth.Claims)
+	if validuser.IsExpired() {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
+	}
+
+	var reg *GetProfileRequest
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.controller.GetWebsocketToken(validuser, reg)
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 

@@ -47,7 +47,7 @@ func (me *ContactController) CreateContact(validuser *auth.Claims, newContact *C
 		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}, http.StatusOK
 	}
 
-	targetuser, err := me.contactService.FindUserConnection(newContact.UID, newContact.ToUsrName)
+	targetuser, err := me.contactService.FindUserConnection(validuser.GetUID(), newContact.ToUsrName)
 	if err != nil {
 		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: fmt.Sprintf("can not find requested user to check connnection. %s", err.Error())}, http.StatusOK
 	}
@@ -58,7 +58,7 @@ func (me *ContactController) CreateContact(validuser *auth.Claims, newContact *C
 	}
 
 	if validuser.GetUID() != user.UID {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user uid did not match"}, http.StatusOK
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user uid did not match 2"}, http.StatusOK
 	}
 
 	if user.Contact != nil {
@@ -144,7 +144,7 @@ func (me *ContactController) CreateContact(validuser *auth.Claims, newContact *C
 	return &result, nil, http.StatusCreated
 }
 
-func (me *ContactController) SearchUsers(keyword, pageStr, limitStr, userUID, status, code string) ([]*UserContact, *jsonrpc2.RPCError, int) {
+func (me *ContactController) SearchUsers(keyword, pageStr, limitStr, userUID, status string) ([]*UserContact, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("search users %s", keyword))
 	var page = pageStr
 	var limit = limitStr
@@ -180,9 +180,9 @@ func (me *ContactController) SearchUsers(keyword, pageStr, limitStr, userUID, st
 		return nil, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
 	}
 
-	if user.Reg.Code != code {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
-	}
+	// if user.Reg.Code != code {
+	// 	return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid jwt"}, http.StatusOK
+	// }
 
 	var usercontacts []*UserContact
 	if strings.HasPrefix(keyword, "@") {

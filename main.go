@@ -34,6 +34,7 @@ var (
 	server         *gin.Engine
 	ctx            context.Context
 	Addr           string
+	DevMode        int
 	verbosityLevel int
 	logConfig      logC
 	logger         = log.New()
@@ -45,11 +46,13 @@ func showHelp() {
 	fmt.Println("      -a {listen addr}")
 	fmt.Println("      -h (show help info)")
 	fmt.Println("      -v {0-2} (verbosity level, default 0)")
+	fmt.Println("      -dev {0/1} (developer mode, default disabled (0))")
 }
 
 func parse() bool {
 	flag.StringVar(&Addr, "a", ":7000", "address to use")
 	flag.IntVar(&verbosityLevel, "v", -1, "verbosity level, higher value - more logs")
+	flag.IntVar(&DevMode, "dev", 0, "dev mode to enable/disable cross origin")
 	help := flag.Bool("h", false, "help info")
 	flag.Parse()
 
@@ -101,14 +104,18 @@ func main() {
 
 	server = gin.Default()
 	limiter := ratelimit.NewBucketWithRate(100, 100)
-	// Enable CORS with the withCredentials option
-	server.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:7000"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
-		AllowHeaders:     []string{"Content-Type", "Authorization", "credentials"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-	}))
+
+	if DevMode > 0 {
+		// Enable CORS with the withCredentials option
+		server.Use(cors.New(cors.Config{
+			AllowOrigins:     []string{"http://localhost:3000"},
+			AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
+			AllowHeaders:     []string{"Content-Type", "Authorization", "credentials", "Origin"},
+			ExposeHeaders:    []string{"Content-Length"},
+			AllowWebSockets:  true,
+			AllowCredentials: true,
+		}))
+	}
 
 	server.GET("/", func(c *gin.Context) {
 		if limiter.TakeAvailable(1) == 0 {
@@ -140,7 +147,7 @@ func main() {
 
 	//app:
 	wsServer := chat.NewWebsocketServer(mongoclient, ctx)
-	wsServer.InitRouteTo(server)
+	wsServer.InitRouteTo(server, ContactRouteController.GetContactService(), DevMode)
 	go wsServer.Run()
 
 	// Use the redirectToAppMiddleware middleware to wrap the handler
