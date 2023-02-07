@@ -183,7 +183,7 @@ func IsValidDate(date string) (bool, error) {
 func ValidateLinkOrJS(s string) bool {
 	// Use the regexp package to compile a regular expression for matching links and JavaScript
 	linkRegexp := regexp.MustCompile(`(http|ftp|https):\/\/([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&amp;:/~\+#]*[\w\-\@?^=%&amp;/~\+#])?`)
-	jsRegexp := regexp.MustCompile(`(?:<script.*>)(\n|\r|.)*?(?:<\/script>)`)
+	jsRegexp := regexp.MustCompile(`(?:<.*\/>)|(?:<.*>)(\n|\r|.)*?(?:<\/.*>)`) //(`(?:<.*>)(\n|\r|.)*?(?:<\/.*>)`)
 
 	// Check if the string contains a link or JavaScript using the regular expression
 	if linkRegexp.MatchString(s) || jsRegexp.MatchString(s) {

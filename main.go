@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -39,6 +40,7 @@ var (
 	logConfig      logC
 	logger         = log.New()
 	limiter        *ratelimit.Bucket
+	Env            string
 )
 
 func showHelp() {
@@ -47,12 +49,14 @@ func showHelp() {
 	fmt.Println("      -h (show help info)")
 	fmt.Println("      -v {0-2} (verbosity level, default 0)")
 	fmt.Println("      -dev {0/1} (developer mode, default disabled (0))")
+	fmt.Println("      -env .env file location path, default current")
 }
 
 func parse() bool {
 	flag.StringVar(&Addr, "a", ":7000", "address to use")
 	flag.IntVar(&verbosityLevel, "v", -1, "verbosity level, higher value - more logs")
 	flag.IntVar(&DevMode, "dev", 0, "dev mode to enable/disable cross origin")
+	flag.StringVar(&Env, "env", "", ".env file location path")
 	help := flag.Bool("h", false, "help info")
 	flag.Parse()
 
@@ -60,6 +64,47 @@ func parse() bool {
 		return false
 	}
 	return true
+}
+
+func readEnv() {
+	env := ".env"
+	if strings.HasSuffix(Env, ".env") {
+		env = Env
+	} else {
+		env = fmt.Sprintf("%s.env", Env)
+	}
+
+	// Open the .env file
+	file, err := os.Open(env)
+	if err != nil {
+		utils.Log().Error(err, "error opening .env file")
+		return
+	}
+	defer file.Close()
+
+	// Read the contents of the .env file
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		// Split the line into a variable name and value
+		line := scanner.Text()
+		parts := strings.SplitN(line, "=", 2)
+
+		// Set the environment variable
+		os.Setenv(parts[0], parts[1])
+	}
+
+	// Check if there was an error during scanning
+	if err := scanner.Err(); err != nil {
+		utils.Log().Error(err, "error reading .env file")
+		return
+	}
+
+	// Use the environment variables in your code
+	hmacsecret := os.Getenv("HMACSECRET")
+	if len(hmacsecret) == 32 {
+		utils.Log().V(2).Info("using .env hmacsecret")
+		auth.SetHmacSecret(hmacsecret)
+	}
 }
 
 func main() {
@@ -77,6 +122,8 @@ func main() {
 	log.SetGlobalOptions(log.GlobalConfig{V: verbosityLevel})
 
 	utils.InitLogger(logger)
+
+	readEnv()
 
 	ctx = context.TODO()
 	// // Set up context and options for connecting to MongoDB

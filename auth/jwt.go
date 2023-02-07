@@ -9,7 +9,11 @@ import (
 	"github.com/golang-jwt/jwt"
 )
 
-const hmacSecret = "WjdwZUh2dWJGdFB1UWRybg=="
+var hmacSecret string = "WjdwZUh2dWJGdFB1UWRybg=="
+
+func SetHmacSecret(s string) {
+	hmacSecret = s
+}
 
 type Claims struct {
 	jwt.MapClaims
