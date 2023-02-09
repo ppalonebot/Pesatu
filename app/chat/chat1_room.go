@@ -2,6 +2,7 @@ package chat
 
 import (
 	"fmt"
+	"pesatu/components/roommember"
 	"pesatu/utils"
 
 	"github.com/google/uuid"
@@ -9,6 +10,7 @@ import (
 
 type Room struct {
 	// ctx        context.Context
+	wsServer   *WsServer
 	ID         uuid.UUID `json:"id"`
 	Name       string    `json:"name"`
 	clients    map[*Client]bool
@@ -16,12 +18,14 @@ type Room struct {
 	unregister chan *Client
 	broadcast  chan *Message
 	Private    bool `json:"private"`
+	// memberids  []string
 }
 
 // NewRoom creates a new Room
-func NewRoom( /*ctx context.Context, */ name string, private bool) *Room {
+func NewRoom( /*ctx context.Context, */ wsServer *WsServer, name string, private bool) *Room {
 	return &Room{
 		// ctx:        ctx,
+		wsServer:   wsServer,
 		ID:         uuid.New(),
 		Name:       name,
 		clients:    make(map[*Client]bool),
@@ -30,6 +34,53 @@ func NewRoom( /*ctx context.Context, */ name string, private bool) *Room {
 		broadcast:  make(chan *Message),
 		Private:    private,
 	}
+}
+
+func (r *Room) GetClients() map[*Client]bool {
+	return r.clients
+}
+
+func (r *Room) AddMemberID(id string) error {
+	// for _, memberID := range r.memberids {
+	// 	if memberID == id {
+	// 		return fmt.Errorf("member ID %s already exists", id)
+	// 	}
+	// }
+	// r.memberids = append(r.memberids, id)
+	// return nil
+	_, err := r.wsServer.roomRepository.AddMember(&roommember.Member{RoomID: r.GetId(), UserID: id})
+	return err
+}
+
+func (r *Room) RemoveMemberID(id string) error {
+	// var index int
+	// var found bool
+	// for i, memberID := range r.memberids {
+	// 	if memberID == id {
+	// 		index = i
+	// 		found = true
+	// 		break
+	// 	}
+	// }
+	// if !found {
+	// 	return fmt.Errorf("member ID %s not found", id)
+	// }
+	// r.memberids = append(r.memberids[:index], r.memberids[index+1:]...)
+	// return nil
+	err := r.wsServer.roomRepository.RemoveMember(&roommember.Member{RoomID: r.GetId(), UserID: id})
+	return err
+}
+
+func (r *Room) CheckMemberID(id string) bool {
+	// for _, memberID := range r.memberids {
+	// 	if memberID == id {
+	// 		return true
+	// 	}
+	// }
+
+	// return false
+	ok, _ := r.wsServer.roomRepository.CheckMemberExist(&roommember.Member{RoomID: r.GetId(), UserID: id})
+	return ok
 }
 
 // RunRoom runs our room, accepting various requests
@@ -56,26 +107,29 @@ func (room *Room) RunRoom() {
 }
 
 func (room *Room) registerClientInRoom(client *Client) {
-	utils.Log().V(2).Info("new client", client.Name, "in room", room.Name)
-
 	if !room.Private {
 		room.notifyClientJoined(client)
 	}
 	room.clients[client] = true
 
-	utils.Log().V(2).Info(client.Name, "is registered in room", room.Name)
+	utils.Log().V(2).Info(fmt.Sprintf("%s is registered in room %s", client.Name, room.Name))
 }
 
 func (room *Room) unregisterClientInRoom(client *Client) {
 	if _, ok := room.clients[client]; ok {
 		delete(room.clients, client)
 		utils.Log().V(2).Info("del client ", client.Name, "from room", room.Name)
+
+		if len(room.clients) == 0 {
+			delete(room.wsServer.rooms, room)
+			utils.Log().V(2).Info("del room ", room.Name, "from room server")
+		}
 	}
 }
 
 func (room *Room) broadcastToClientsInRoom(message []byte) {
 	for client := range room.clients {
-		utils.Log().V(2).Info("\tBroadcast []byte :", client.Name)
+		utils.Log().V(2).Info(fmt.Sprintf("\tBroadcast []byte : %s", client.Name))
 		client.send <- message
 	}
 

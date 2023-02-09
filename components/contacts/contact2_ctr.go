@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"pesatu/auth"
-	"pesatu/components/user"
 	"pesatu/jsonrpc2"
 	"pesatu/utils"
 	"strconv"
@@ -13,12 +12,11 @@ import (
 )
 
 type ContactController struct {
-	userService    user.I_UserRepo
 	contactService I_ContactRepo
 }
 
-func NewContactController(userService user.I_UserRepo, contactService I_ContactRepo) ContactController {
-	return ContactController{userService, contactService}
+func NewContactController(contactService I_ContactRepo) ContactController {
+	return ContactController{contactService}
 }
 
 func checkStatus(s Status) bool {
@@ -28,11 +26,7 @@ func checkStatus(s Status) bool {
 		}
 	}
 
-	if s == "" {
-		return true
-	}
-
-	return false
+	return s == ""
 }
 
 func (me *ContactController) CreateContact(validuser *auth.Claims, newContact *CreateContact) (*Contact, *jsonrpc2.RPCError, int) {
@@ -172,7 +166,7 @@ func (me *ContactController) SearchUsers(keyword, pageStr, limitStr, userUID, st
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "status invalid"}, http.StatusOK
 	}
 
-	user, err := me.userService.FindUserById(userUID)
+	user, err := me.contactService.FindUserById(userUID)
 	if err != nil {
 		if strings.Contains(err.Error(), "exists") {
 			return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK

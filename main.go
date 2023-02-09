@@ -48,14 +48,14 @@ func showHelp() {
 	fmt.Println("      -a {listen addr}")
 	fmt.Println("      -h (show help info)")
 	fmt.Println("      -v {0-2} (verbosity level, default 0)")
-	fmt.Println("      -dev {0/1} (developer mode, default disabled (0))")
+	fmt.Println("      -dev {0-2} (developer mode, default disabled (0), enable cors (1), also enable delay (2))")
 	fmt.Println("      -env .env file location path, default current")
 }
 
 func parse() bool {
 	flag.StringVar(&Addr, "a", ":7000", "address to use")
 	flag.IntVar(&verbosityLevel, "v", -1, "verbosity level, higher value - more logs")
-	flag.IntVar(&DevMode, "dev", 0, "dev mode to enable/disable cross origin")
+	flag.IntVar(&DevMode, "dev", 0, "dev mode to enable/disable developer mode")
 	flag.StringVar(&Env, "env", "", ".env file location path")
 	help := flag.Bool("h", false, "help info")
 	flag.Parse()
@@ -184,7 +184,9 @@ func main() {
 	UploadImageRouteCtr.InitRouteTo(server)
 
 	//for testing
-	server.Use(DelayMiddleware(1 * time.Second))
+	if DevMode > 1 {
+		server.Use(DelayMiddleware(1 * time.Second))
+	}
 
 	ProfileRouteController := userprofile.NewProfileRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
 	ProfileRouteController.InitRouteTo(server)

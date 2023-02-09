@@ -13,13 +13,13 @@ type GetProfileRequest struct {
 	JWT      string `json:"jwt"`
 }
 type UpdateUserProfile struct {
-	UID      string `json:"uid"`
-	Name     string `json:"name"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Status   string `json:"status"`
-	Bio      string `json:"bio"`
-	JWT      string `json:"jwt"`
+	UID  string `json:"uid"`
+	Name string `json:"name"`
+	// Username string `json:"username"`
+	Email  string `json:"email"`
+	Status string `json:"status"`
+	Bio    string `json:"bio"`
+	JWT    string `json:"jwt"`
 }
 
 type ResponseUserProfile struct {

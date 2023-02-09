@@ -65,18 +65,18 @@ func (me *ProfileController) UpdateMyProfile(validuser *auth.Claims, update *Upd
 		}
 	}
 
-	update.Username = strings.ToLower(update.Username)
-	if user.Username != update.Username {
-		_, err = utils.IsValidUsername(update.Username)
-		if err != nil {
-			errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "username"})
-		} else {
-			exist, _ := me.userService.FindUserByUsername(update.Username)
-			if exist != nil {
-				errres = append(errres, &jsonrpc2.InputFieldError{Error: "username unavailable", Field: "username"})
-			}
-		}
-	}
+	// update.Username = strings.ToLower(update.Username)
+	// if user.Username != update.Username {
+	// 	_, err = utils.IsValidUsername(update.Username)
+	// 	if err != nil {
+	// 		errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "username"})
+	// 	} else {
+	// 		exist, _ := me.userService.FindUserByUsername(update.Username)
+	// 		if exist != nil {
+	// 			errres = append(errres, &jsonrpc2.InputFieldError{Error: "username unavailable", Field: "username"})
+	// 		}
+	// 	}
+	// }
 
 	update.Email = strings.ToLower(update.Email)
 	if user.Email != update.Email {

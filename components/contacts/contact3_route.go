@@ -28,7 +28,7 @@ func NewContactRoute(mongoclient *mongo.Client, ctx context.Context, l logr.Logg
 	Logger.V(2).Info("NewContactRoute created")
 	contactCollection := mongoclient.Database("pesatu").Collection("contact")
 	contactService := NewContactService(userService.GetCollection(), contactCollection, ctx)
-	contactController := NewContactController(userService, contactService)
+	contactController := NewContactController(contactService)
 	return ContactRoute{contactController, limiter}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"pesatu/components/user"
 	"pesatu/utils"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 )
 
 type I_ContactRepo interface {
+	user.I_UserRepo
 	CreateContact(contact *Contact) (*DBContact, error)
 	UpdateContact(id primitive.ObjectID, contact *DBContact) (*DBContact, error)
 	DeleteContact(id primitive.ObjectID) error
@@ -26,13 +28,14 @@ type I_ContactRepo interface {
 }
 
 type ContactService struct {
-	userCollection    *mongo.Collection
+	user.I_UserRepo
 	contactCollection *mongo.Collection
 	ctx               context.Context
 }
 
 func NewContactService(userCollection *mongo.Collection, contactCollection *mongo.Collection, ctx context.Context) I_ContactRepo {
-	return &ContactService{userCollection, contactCollection, ctx}
+	userService := user.NewUserService(userCollection, ctx)
+	return &ContactService{userService, contactCollection, ctx}
 }
 
 func (me *ContactService) CreateContact(contact *Contact) (*DBContact, error) {
@@ -246,7 +249,7 @@ func (me *ContactService) FindUserConnection(uidOwner, toUsername string) (*DBUs
 		{"$limit": 1},
 	}
 
-	cursor, err := me.userCollection.Aggregate(me.ctx, pipeline)
+	cursor, err := me.GetCollection().Aggregate(me.ctx, pipeline)
 	if err != nil {
 		return nil, err
 	}
@@ -274,8 +277,8 @@ func (me *ContactService) FindUserConnection(uidOwner, toUsername string) (*DBUs
 	return ucontacts[0], nil
 }
 
-func (me *ContactService) FindUsers(pipeline []primitive.M) ([]*UserContact, error) {
-	cursor, err := me.userCollection.Aggregate(me.ctx, pipeline)
+func (me *ContactService) findUsers(pipeline []primitive.M) ([]*UserContact, error) {
+	cursor, err := me.GetCollection().Aggregate(me.ctx, pipeline)
 	if err != nil {
 		return nil, err
 	}
@@ -360,7 +363,7 @@ func (me *ContactService) FindUsersByName(uidOwner, name, username, status strin
 	}
 	// pipeline = append(pipeline, bson.M{"$skip": skip}, bson.M{"$limit": limit})
 
-	return me.FindUsers(pipeline)
+	return me.findUsers(pipeline)
 }
 
 func (me *ContactService) FindUsersByUsername(uidOwner, username, status string, page, limit int) ([]*UserContact, error) {
@@ -415,5 +418,20 @@ func (me *ContactService) FindUsersByUsername(uidOwner, username, status string,
 	}
 	// pipeline = append(pipeline, bson.M{"$skip": skip}, bson.M{"$limit": limit})
 
-	return me.FindUsers(pipeline)
+	return me.findUsers(pipeline)
 }
+
+// func (me *ContactService) FindUserByUsername(username string) (*user.DBUser, error) {
+// 	query := bson.M{"username": username}
+
+// 	var user *user.DBUser
+
+// 	if err := me.userCollection.FindOne(me.ctx, query).Decode(&user); err != nil {
+// 		if err == mongo.ErrNoDocuments {
+// 			return nil, errors.New("user unavailable")
+// 		}
+// 		return nil, err
+// 	}
+
+// 	return user, nil
+// }

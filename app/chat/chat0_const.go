@@ -39,5 +39,5 @@ const (
 type I_User interface {
 	GetUID() string
 	GetUsername() string
-	joinRoom(roomName string, sender I_User) *Room
+	// joinRoom(roomName string, sender I_User, isPrivate bool) *Room
 }

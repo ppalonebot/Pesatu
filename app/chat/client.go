@@ -20,15 +20,24 @@ type Client struct {
 	conn           *websocket.Conn
 	wsServer       *WsServer
 	send           chan []byte
-	ID             uuid.UUID `json:"id"`
+	id             uuid.UUID `json:"id"`
 	Name           string    `json:"name"`
+	Username       string    `json:"username"`
+	Avatar         string    `json:"avatar"`
 	rooms          map[*Room]bool
 	contactService contacts.I_ContactRepo
 }
 
-func newClient(conn *websocket.Conn, wsServer *WsServer, username string, ID string, contactRepo contacts.I_ContactRepo) *Client {
+func newClient(conn *websocket.Conn, wsServer *WsServer, username string, ID string, contactRepo contacts.I_ContactRepo) (*Client, error) {
+	user, err := contactRepo.FindUserByUsername(username)
+	if err != nil {
+		return nil, err
+	}
+
 	client := &Client{
-		Name:           username,
+		Name:           user.Name,
+		Username:       user.Username,
+		Avatar:         user.Avatar,
 		conn:           conn,
 		wsServer:       wsServer,
 		send:           make(chan []byte, 256),
@@ -37,10 +46,10 @@ func newClient(conn *websocket.Conn, wsServer *WsServer, username string, ID str
 	}
 
 	if ID != "" {
-		client.ID, _ = uuid.Parse(ID)
+		client.id, _ = uuid.Parse(ID)
 	}
 
-	return client
+	return client, nil
 }
 
 // ServeWs handles websocket requests from clients requests.
@@ -76,7 +85,11 @@ func ServeWs(wsServer *WsServer, c *gin.Context, contactRepo contacts.I_ContactR
 		return
 	}
 
-	client := newClient(conn, wsServer, user.GetUsername(), user.GetUID(), contactRepo)
+	client, err := newClient(conn, wsServer, user.GetUsername(), user.GetUID(), contactRepo)
+	if err != nil {
+		utils.Log().Error(err, "error while creating client")
+		return
+	}
 
 	go client.writeThread()
 	go client.readThread()
@@ -86,11 +99,11 @@ func ServeWs(wsServer *WsServer, c *gin.Context, contactRepo contacts.I_ContactR
 }
 
 func (me *Client) GetUID() string {
-	return me.ID.String()
+	return me.id.String()
 }
 
 func (me *Client) GetUsername() string {
-	return me.Name
+	return me.Username
 }
 
 func (me *Client) readThread() {
@@ -196,15 +209,15 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 	case JoinRoomPrivateAction:
 		me.handleJoinRoomPrivateMessage(message)
 
-	case Info:
-		me.handleInfoMessage(message)
+		// case Info:
+		// 	me.handleInfoMessage(message)
 	}
 }
 
 func (me *Client) handleJoinRoomMessage(message Message) {
 	//message was a room name
 	roomName := message.Message
-	me.joinRoom(roomName, nil)
+	me.joinRoom(roomName, nil, false, "")
 }
 
 func (me *Client) handleLeaveRoomMessage(message Message) {
@@ -224,37 +237,37 @@ func (me *Client) handleLeaveRoomMessage(message Message) {
 	room.unregister <- me
 }
 
-func (me *Client) handleInfoMessage(message Message) {
-	_, err := utils.IsValidUsername(message.Message)
-	if err != nil {
-		utils.Log().Error(err, "get target info error while checking target username")
-		return
-	}
+// func (me *Client) handleInfoMessage(message Message) {
+// 	_, err := utils.IsValidUsername(message.Message)
+// 	if err != nil {
+// 		utils.Log().Error(err, "get target info error while checking target username")
+// 		return
+// 	}
 
-	targetuser, err := me.contactService.FindUserConnection(me.GetUID(), message.Message)
-	if err != nil {
-		utils.Log().Error(err, "get target info can not find requested user to check connnection")
-		return
-	}
+// 	targetuser, err := me.contactService.FindUserConnection(me.GetUID(), message.Message)
+// 	if err != nil {
+// 		utils.Log().Error(err, "get target info can not find requested user to check connnection")
+// 		return
+// 	}
 
-	if targetuser.Contact.Status != contacts.Accepted {
-		utils.Log().Info("get target info but you are not in their contact")
-		return
-	}
+// 	if targetuser.Contact.Status != contacts.Accepted {
+// 		utils.Log().Info("get target info but you are not in their contact")
+// 		return
+// 	}
 
-	userContact := &contacts.UserContact{
-		Name:     targetuser.Name,
-		Username: targetuser.Username,
-		Avatar:   targetuser.Avatar,
-		Contact: &contacts.ResponseStatus{
-			Status:    targetuser.Contact.Status,
-			UpdatedAt: targetuser.Contact.UpdatedAt,
-			CreatedAt: targetuser.Contact.CreatedAt,
-		},
-	}
+// 	userContact := &contacts.UserContact{
+// 		Name:     targetuser.Name,
+// 		Username: targetuser.Username,
+// 		Avatar:   targetuser.Avatar,
+// 		Contact: &contacts.ResponseStatus{
+// 			Status:    targetuser.Contact.Status,
+// 			UpdatedAt: targetuser.Contact.UpdatedAt,
+// 			CreatedAt: targetuser.Contact.CreatedAt,
+// 		},
+// 	}
 
-	me.notifyInfo("target info", userContact)
-}
+// 	me.notifyInfo(nil,"target info", userContact)
+// }
 
 func (me *Client) handleJoinRoomPrivateMessage(message Message) {
 	_, err := utils.IsValidUsername(message.Message)
@@ -269,37 +282,38 @@ func (me *Client) handleJoinRoomPrivateMessage(message Message) {
 		return
 	}
 
+	roomName := utils.JoinAndSort(me.GetUsername(), targetuser.Username, "-")
+
 	if targetuser.Contact.Status != contacts.Accepted {
 		utils.Log().Info("Join Room Private but you are not in their contact")
 		return
 	}
 
-	target := me.wsServer.findUserByID(targetuser.UID)
+	targets := me.wsServer.findClientByID(targetuser.UID)
 
 	//todo next
 	//target := me.wsServer.findUserByID(message.Message)
 
-	if target == nil {
+	if len(targets) == 0 || targets == nil {
 		utils.Log().Info(fmt.Sprintf("get request Join Room Private from %s to none, target unavailable", me.GetUsername()))
-		userContact := &contacts.UserContact{
-			Name:     targetuser.Name,
-			Username: targetuser.Username,
-			Avatar:   targetuser.Avatar,
-			Contact: &contacts.ResponseStatus{
-				Status:    targetuser.Contact.Status,
-				UpdatedAt: targetuser.Contact.UpdatedAt,
-				CreatedAt: targetuser.Contact.CreatedAt,
-			},
-		}
+		sender := NewSender(targetuser.UID, targetuser.Name, targetuser.Username, targetuser.Avatar)
 
-		me.notifyInfo("target offline", userContact)
+		room := me.joinRoom(roomName, sender, true, "offline")
+		_ = room.AddMemberID(me.GetUID())
+		_ = room.AddMemberID(targetuser.UID)
 		return
 	}
 
-	roomName := utils.JoinAndSort(me.ID.String(), message.Message, "-")
+	var room *Room
+	for i := 0; i < len(targets); i++ {
+		_ = me.joinRoom(roomName, targets[i], true, "online")
+		room = targets[i].joinRoom(roomName, me, true, "online")
+	}
 
-	_ = me.joinRoom(roomName, target)
-	_ = target.joinRoom(roomName, me)
+	if room != nil {
+		_ = room.AddMemberID(me.GetUID())
+		_ = room.AddMemberID(targetuser.UID)
+	}
 
 	//todo next Join room
 	//joinedRoom := me.joinRoom(roomName, target)
@@ -311,31 +325,21 @@ func (me *Client) handleJoinRoomPrivateMessage(message Message) {
 	// }
 }
 
-func (me *Client) joinRoom(roomName string, sender I_User) *Room {
+func (me *Client) joinRoom(roomName string, sender I_User, isPrivate bool, msg string) *Room {
 	room := me.wsServer.findRoomByName(roomName)
 	if room == nil {
-		room = me.wsServer.createRoom(roomName, sender != nil)
+		room = me.wsServer.createRoom(roomName, isPrivate)
 		if room == nil {
 			return nil
 		}
 	}
 
-	// Don't allow to join private rooms through public room message
-	if sender == nil && room.Private {
-		return nil
-	}
-
-	if sender != nil {
-		utils.Log().V(2).Info(fmt.Sprintf("%s Join Room %s id:%s sender:%s", me.Name, roomName, room.GetId(), sender.GetUsername()))
-	} else {
-		utils.Log().V(2).Info(fmt.Sprintf("%s Join Room %s id: %s", me.Name, roomName, room.GetId()))
-	}
-
 	if !me.isInRoom(room) {
 		me.rooms[room] = true
 		room.register <- me
-		me.notifyRoomJoined(room, sender)
 	}
+
+	me.notifyRoomJoined(room, sender, msg)
 
 	return room
 }
@@ -363,20 +367,21 @@ func (me *Client) isInRoom(room *Room) bool {
 // 	}
 // }
 
-func (me *Client) notifyRoomJoined(room *Room, sender I_User) {
+func (me *Client) notifyRoomJoined(room *Room, sender I_User, msg string) {
 	message := Message{
-		Action: RoomJoinedAction,
-		Target: room,
-		Sender: sender,
+		Action:  RoomJoinedAction,
+		Target:  room,
+		Sender:  sender,
+		Message: msg,
 	}
-	utils.Log().V(2).Info("notify Room Joined,", me.Name, "is registered in room", room.Name)
+	utils.Log().V(2).Info(fmt.Sprintf("notify Room Joined, %s is registered in room %s", me.Name, room.Name))
 	me.send <- message.encode()
 }
 
-func (me *Client) notifyInfo(msg string, sender interface{}) {
+func (me *Client) notifyInfo(room *Room, msg string, sender interface{}) {
 	message := Message{
 		Action:  Info,
-		Target:  nil,
+		Target:  room,
 		Sender:  sender,
 		Message: msg,
 	}

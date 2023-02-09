@@ -17,6 +17,7 @@ type RoomRepository struct {
 }
 
 type I_RoomRepo interface {
+	GetRoomCollection() *mongo.Collection
 	AddRoom(room *CreateRoom) (*Room, error)
 	FindRoomByName(name string) (*Room, error)
 	DeleteRoom(obId primitive.ObjectID) error
@@ -24,6 +25,10 @@ type I_RoomRepo interface {
 
 func NewRoomRepository(roomCollection *mongo.Collection, ctx context.Context) I_RoomRepo {
 	return &RoomRepository{roomCollection, ctx}
+}
+
+func (me *RoomRepository) GetRoomCollection() *mongo.Collection {
+	return me.roomCollection
 }
 
 func (me *RoomRepository) AddRoom(room *CreateRoom) (*Room, error) {

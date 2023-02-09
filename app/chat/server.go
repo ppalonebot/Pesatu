@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"pesatu/components/contacts"
-	"pesatu/components/room"
+	roommodel "pesatu/components/room"
+	room "pesatu/components/roommember"
 	"pesatu/utils"
 
 	"github.com/gin-gonic/gin"
@@ -19,14 +20,15 @@ type WsServer struct {
 	unregister     chan *Client
 	broadcast      chan []byte
 	rooms          map[*Room]bool
-	roomRepository room.I_RoomRepo
+	roomRepository room.I_RoomMember
 	// userRepository user.UserService
 }
 
 // NewWebsocketServer creates a new WsServer type
 func NewWebsocketServer(mongoclient *mongo.Client, ctx context.Context /*, userRepository user.UserService*/) *WsServer {
 	collectionRoom := mongoclient.Database("pesatu").Collection("rooms")
-	roomRepository := room.NewRoomRepository(collectionRoom, ctx)
+	memberCollection := mongoclient.Database("pesatu").Collection("roommembers")
+	roomRepository := room.NewRoomMemberService(collectionRoom, memberCollection, ctx)
 
 	wsServer := &WsServer{
 		clients:        make(map[*Client]bool),
@@ -43,9 +45,9 @@ func NewWebsocketServer(mongoclient *mongo.Client, ctx context.Context /*, userR
 	return wsServer
 }
 
-func (me *WsServer) InitRouteTo(rg *gin.Engine, contactRepo contacts.I_ContactRepo, devmode int) {
+func (server *WsServer) InitRouteTo(rg *gin.Engine, contactRepo contacts.I_ContactRepo, devmode int) {
 	rg.GET("/ws", func(c *gin.Context) {
-		ServeWs(me, c, contactRepo, devmode)
+		ServeWs(server, c, contactRepo, devmode)
 	})
 }
 
@@ -62,8 +64,8 @@ func (server *WsServer) Run() {
 		case client := <-server.unregister:
 			server.unregisterClient(client)
 
-		case message := <-server.broadcast:
-			server.broadcastToClients(message)
+			// case message := <-server.broadcast:
+			// 	server.broadcastToClients(message)
 		}
 
 	}
@@ -80,19 +82,21 @@ func (server *WsServer) registerClient(client *Client) {
 	server.clients[client] = true
 
 	utils.Log().V(2).Info(fmt.Sprintf("registered %s id: %s", client.GetUsername(), client.GetUID()))
+	utils.Log().V(2).Info(fmt.Sprintf("client counts %d", len(server.clients)))
 }
 
 // remove client connection
 func (server *WsServer) unregisterClient(client *Client) {
 	if _, ok := server.clients[client]; ok {
-		delete(server.clients, client)
-		// Remove user from repo
-		// server.userRepository.RemoveUser(client)
 
 		server.notifyClientLeft(client)
 
 		//todo: Publish user left in PubSub
 		//server.publishClientLeft(client)
+
+		delete(server.clients, client)
+		// Remove user from repo
+		// server.userRepository.RemoveUser(client)
 
 		utils.Log().V(2).Info(fmt.Sprintf("del connection %s @%s", client.Name, client.conn.RemoteAddr().String()))
 	}
@@ -115,8 +119,8 @@ func (server *WsServer) notifyClientJoined(client *Client) {
 		Action: UserJoinedAction,
 		Sender: client,
 	}
-	utils.Log().V(2).Info(fmt.Sprintf("notify User Joined %s to", client.Name))
-	server.broadcastToClients(message.encode())
+	utils.Log().V(2).Info(fmt.Sprintf("notify User Joined %s to", client.GetUsername()))
+	server.broadcastToClientsInRoom(client, message)
 }
 
 //todo next
@@ -140,7 +144,7 @@ func (server *WsServer) notifyClientLeft(client *Client) {
 	}
 
 	utils.Log().V(2).Info(fmt.Sprintf("notify User Left %s to", client.Name))
-	server.broadcastToClients(message.encode())
+	server.broadcastToClientsInRoom(client, message)
 }
 
 //todo next
@@ -170,35 +174,35 @@ func (server *WsServer) notifyClientLeft(client *Client) {
 // 	}
 // }
 
-func (server *WsServer) handleUserJoined(message Message) {
-	// Add the user to the slice
-	server.users = append(server.users, message.Sender.(I_User))
-	server.broadcastToClients(message.encode())
-}
+// func (server *WsServer) handleUserJoined(message Message) {
+// 	// Add the user to the slice
+// 	server.users = append(server.users, message.Sender.(I_User))
+// 	server.broadcastToClients(message.encode())
+// }
 
-func (server *WsServer) handleUserLeft(message Message) {
-	// Remove the user from the slice
-	for i, user := range server.users {
-		if user.GetUID() == message.Sender.(I_User).GetUID() {
-			server.users[i] = server.users[len(server.users)-1]
-			server.users = server.users[:len(server.users)-1]
-			break // added this break to only remove the first occurrence
-		}
-	}
+// func (server *WsServer) handleUserLeft(message Message) {
+// 	// Remove the user from the slice
+// 	for i, user := range server.users {
+// 		if user.GetUID() == message.Sender.(I_User).GetUID() {
+// 			server.users[i] = server.users[len(server.users)-1]
+// 			server.users = server.users[:len(server.users)-1]
+// 			break // added this break to only remove the first occurrence
+// 		}
+// 	}
 
-	server.broadcastToClients(message.encode())
-}
+// 	server.broadcastToClients(message.encode())
+// }
 
-func (server *WsServer) handleUserJoinPrivate(message Message) {
-	// Find client for given user, if found add the user to the room.
-	targetClients := server.findClientByID(message.Message)
-	// if targetClient != nil {
-	// 	targetClient.joinRoom(message.Target.GetName(), message.Sender)
-	// }
-	for _, targetClient := range targetClients {
-		_ = targetClient.joinRoom(message.Target.GetName(), message.Sender.(I_User))
-	}
-}
+// func (server *WsServer) handleUserJoinPrivate(message Message) {
+// 	// Find client for given user, if found add the user to the room.
+// 	targetClients := server.findClientByID(message.Message)
+// 	// if targetClient != nil {
+// 	// 	targetClient.joinRoom(message.Target.GetName(), message.Sender)
+// 	// }
+// 	for _, targetClient := range targetClients {
+// 		_ = targetClient.joinRoom(message.Target.GetName(), message.Sender.(I_User), true)
+// 	}
+// }
 
 func (server *WsServer) listOnlineClients(client *Client) {
 	var uniqueUsers = make(map[string]bool)
@@ -220,9 +224,27 @@ func (server *WsServer) broadcastToClients(message []byte) {
 		utils.Log().V(2).Info(fmt.Sprintf("\tBroadcast []byte :%s @ %s", client.Name, client.conn.RemoteAddr().String()))
 		client.send <- message
 	}
+}
 
-	if len(server.clients) <= 0 {
-		utils.Log().V(2).Info("\tnone")
+func (server *WsServer) broadcastToClientsInRoom(client *Client, message *Message) {
+	page := 1
+	var rooms []*roommodel.Room
+	var err error
+	for page == 1 || len(rooms) == 10 {
+		rooms, err = server.roomRepository.FindRoomByMemberID(client.GetUID(), page, 10)
+		utils.Log().V(2).Info(fmt.Sprintf("broadcastToClientsInRoom rooms count : %d", len(rooms)))
+		page = page + 1
+		if err != nil {
+			utils.Log().Error(err, "error while finding rooms by user uid")
+		}
+		for room := range server.rooms {
+			for r := range rooms {
+				if room.GetId() != rooms[r].GetId() {
+					continue
+				}
+				room.broadcastToClientsInRoom(message.encode())
+			}
+		}
 	}
 }
 
@@ -249,7 +271,7 @@ func (server *WsServer) runRoomFromRepository(name string) *Room {
 	var room *Room
 	dbRoom, _ := server.roomRepository.FindRoomByName(name)
 	if dbRoom != nil {
-		room = NewRoom(dbRoom.GetName(), dbRoom.GetPrivate())
+		room = NewRoom(server, dbRoom.GetName(), dbRoom.GetPrivate())
 		room.ID, _ = uuid.Parse(dbRoom.GetId())
 
 		go room.RunRoom()
@@ -272,9 +294,9 @@ func (server *WsServer) findRoomByID(ID string) *Room {
 }
 
 func (server *WsServer) createRoom(name string, private bool) *Room {
-	newRoom := NewRoom(name, private)
+	newRoom := NewRoom(server, name, private)
 
-	createroom := &room.CreateRoom{
+	createroom := &roommodel.CreateRoom{
 		UID:     newRoom.GetId(),
 		Name:    newRoom.GetName(),
 		Private: newRoom.GetPrivate(),
