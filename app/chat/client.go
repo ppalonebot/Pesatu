@@ -20,10 +20,10 @@ type Client struct {
 	conn           *websocket.Conn
 	wsServer       *WsServer
 	send           chan []byte
-	id             uuid.UUID `json:"id"`
-	Name           string    `json:"name"`
-	Username       string    `json:"username"`
-	Avatar         string    `json:"avatar"`
+	id             uuid.UUID
+	Name           string `json:"name"`
+	Username       string `json:"username"`
+	Avatar         string `json:"avatar"`
 	rooms          map[*Room]bool
 	contactService contacts.I_ContactRepo
 }
@@ -378,12 +378,12 @@ func (me *Client) notifyRoomJoined(room *Room, sender I_User, msg string) {
 	me.send <- message.encode()
 }
 
-func (me *Client) notifyInfo(room *Room, msg string, sender interface{}) {
-	message := Message{
-		Action:  Info,
-		Target:  room,
-		Sender:  sender,
-		Message: msg,
-	}
-	me.send <- message.encode()
-}
+// func (me *Client) notifyInfo(room *Room, msg string, sender interface{}) {
+// 	message := Message{
+// 		Action:  Info,
+// 		Target:  room,
+// 		Sender:  sender,
+// 		Message: msg,
+// 	}
+// 	me.send <- message.encode()
+// }
