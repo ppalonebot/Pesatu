@@ -7,6 +7,7 @@ import (
 	"pesatu/auth"
 	"pesatu/components/contacts"
 	"pesatu/utils"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -124,8 +125,16 @@ func (me *Client) readThread() {
 		_, jsonMessage, err := me.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				utils.Log().Error(err, ("unexpected websocket close error"))
+				utils.Log().Error(err, "unexpected websocket close error")
+				break
 			}
+
+			if strings.Contains(err.Error(), "close") {
+				utils.Log().V(2).Info(fmt.Sprintf("client @%s close connection", me.GetUsername()))
+				break
+			}
+
+			utils.Log().Error(err, "error while reading message")
 			break
 		}
 
@@ -194,11 +203,7 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 
 	switch message.Action {
 	case SendMessageAction:
-		roomID := message.Target.GetId()
-		if room := me.wsServer.findRoomByID(roomID); room != nil {
-			utils.Log().Info(fmt.Sprintf("new msg in room %s", room.GetName()))
-			room.broadcast <- &message
-		}
+		me.handleSendMessageAction(message)
 
 	case JoinRoomAction:
 		me.handleJoinRoomMessage(message)
@@ -211,6 +216,15 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 
 		// case Info:
 		// 	me.handleInfoMessage(message)
+	}
+}
+
+func (me *Client) handleSendMessageAction(message Message) {
+	roomID := message.Target.GetId()
+	if room := me.wsServer.findRoomByID(roomID); room != nil {
+		utils.Log().V(2).Info(fmt.Sprintf("new msg in room %s", room.GetName()))
+		room.broadcast <- &message
+		room.writeMsgToDB <- &message
 	}
 }
 

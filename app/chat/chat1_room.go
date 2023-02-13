@@ -4,35 +4,79 @@ import (
 	"fmt"
 	"pesatu/components/roommember"
 	"pesatu/utils"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 type Room struct {
 	// ctx        context.Context
-	wsServer   *WsServer
-	ID         uuid.UUID `json:"id"`
-	Name       string    `json:"name"`
-	clients    map[*Client]bool
-	register   chan *Client
-	unregister chan *Client
-	broadcast  chan *Message
-	Private    bool `json:"private"`
-	// memberids  []string
+	wsServer     *WsServer
+	ID           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	clients      map[*Client]bool
+	register     chan *Client
+	unregister   chan *Client
+	broadcast    chan *Message
+	writeMsgToDB chan *Message
+	Private      bool `json:"private"`
+	wg           *sync.WaitGroup
+	disposed     bool
 }
 
 // NewRoom creates a new Room
-func NewRoom( /*ctx context.Context, */ wsServer *WsServer, name string, private bool) *Room {
-	return &Room{
+func NewRoom(wsServer *WsServer, name string, private bool) *Room {
+	inputs := make(chan *Message)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	r := &Room{
 		// ctx:        ctx,
-		wsServer:   wsServer,
-		ID:         uuid.New(),
-		Name:       name,
-		clients:    make(map[*Client]bool),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast:  make(chan *Message),
-		Private:    private,
+		wsServer:     wsServer,
+		ID:           uuid.New(),
+		Name:         name,
+		clients:      make(map[*Client]bool),
+		register:     make(chan *Client),
+		unregister:   make(chan *Client),
+		broadcast:    make(chan *Message),
+		writeMsgToDB: inputs,
+		Private:      private,
+		wg:           &wg,
+		disposed:     false,
+	}
+
+	go r.writeToDBLoop()
+
+	return r
+}
+
+func (r *Room) writeToDBLoop() {
+	defer r.wg.Done()
+	var inputMessages []*Message
+	for {
+		select {
+		case msg := <-r.writeMsgToDB:
+			inputMessages = append(inputMessages, msg)
+		case <-time.After(1 * time.Second):
+			if len(inputMessages) > 0 {
+				var s string
+				for _, msg := range inputMessages {
+					if len(s) > 0 {
+						s = s + "\n" + msg.Time
+					} else {
+						s = msg.Time
+					}
+				}
+				utils.Log().V(2).Info(fmt.Sprintf("write msg:\n %s", s))
+
+				inputMessages = nil
+			}
+		}
+
+		if r.disposed {
+			break
+		}
 	}
 }
 
@@ -121,6 +165,8 @@ func (room *Room) unregisterClientInRoom(client *Client) {
 		utils.Log().V(2).Info("del client ", client.Name, "from room", room.Name)
 
 		if len(room.clients) == 0 {
+			room.disposed = true
+			room.wg.Wait()
 			delete(room.wsServer.rooms, room)
 			utils.Log().V(2).Info("del room ", room.Name, "from room server")
 		}
