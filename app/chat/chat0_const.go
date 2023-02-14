@@ -34,6 +34,7 @@ const (
 	JoinRoomPrivateAction Action = "join-room-private"
 	RoomJoinedAction      Action = "room-joined"
 	Info                  Action = "info"
+	GetMessages           Action = "get-msg"
 )
 
 type I_User interface {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"pesatu/components/contacts"
+	"pesatu/components/messageDB"
 	roommodel "pesatu/components/room"
 	room "pesatu/components/roommember"
 	"pesatu/utils"
@@ -21,6 +22,7 @@ type WsServer struct {
 	broadcast      chan []byte
 	rooms          map[*Room]bool
 	roomRepository room.I_RoomMember
+	msgRepository  messageDB.I_MessageRepo
 	// userRepository user.UserService
 }
 
@@ -28,7 +30,9 @@ type WsServer struct {
 func NewWebsocketServer(mongoclient *mongo.Client, ctx context.Context /*, userRepository user.UserService*/) *WsServer {
 	collectionRoom := mongoclient.Database("pesatu").Collection("rooms")
 	memberCollection := mongoclient.Database("pesatu").Collection("roommembers")
-	roomRepository := room.NewRoomMemberService(collectionRoom, memberCollection, ctx)
+
+	userCollection := mongoclient.Database("pesatu").Collection("users")
+	msgCollection := mongoclient.Database("pesatu").Collection("messages")
 
 	wsServer := &WsServer{
 		clients:        make(map[*Client]bool),
@@ -36,7 +40,8 @@ func NewWebsocketServer(mongoclient *mongo.Client, ctx context.Context /*, userR
 		unregister:     make(chan *Client),
 		broadcast:      make(chan []byte),
 		rooms:          make(map[*Room]bool),
-		roomRepository: roomRepository,
+		roomRepository: room.NewRoomMemberService(collectionRoom, memberCollection, ctx),
+		msgRepository:  messageDB.NewMsgRepository(userCollection, msgCollection, ctx),
 		// userRepository: userRepository,
 	}
 

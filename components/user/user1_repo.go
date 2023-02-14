@@ -192,7 +192,7 @@ func (me *UserService) FindUsersByKeyUsername(keyUser string, page int, limit in
 }
 
 func (me *UserService) DeleteUser(obId primitive.ObjectID) error {
-	query := bson.M{"_id": obId}
+	query := &bson.M{"_id": obId}
 
 	res, err := me.userCollection.DeleteOne(me.ctx, query)
 	if err != nil {

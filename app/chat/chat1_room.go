@@ -2,6 +2,7 @@ package chat
 
 import (
 	"fmt"
+	"pesatu/components/messageDB"
 	"pesatu/components/roommember"
 	"pesatu/utils"
 	"sync"
@@ -60,6 +61,7 @@ func (r *Room) writeToDBLoop() {
 			inputMessages = append(inputMessages, msg)
 		case <-time.After(1 * time.Second):
 			if len(inputMessages) > 0 {
+				var messages []*messageDB.CreateMessage
 				var s string
 				for _, msg := range inputMessages {
 					if len(s) > 0 {
@@ -67,10 +69,29 @@ func (r *Room) writeToDBLoop() {
 					} else {
 						s = msg.Time
 					}
+
+					CreatedAt, err := time.Parse(time.RFC3339, msg.Time)
+					if err != nil {
+						CreatedAt = time.Now()
+					}
+
+					messages = append(messages, &messageDB.CreateMessage{
+						Action:  msg.Action,
+						Message: msg.Message,
+						RoomId:  r.GetId(),
+						Sender:  msg.Sender.(I_User).GetUID(),
+						Status:  msg.Status,
+						Time:    CreatedAt,
+					})
 				}
+				inputMessages = nil
+
 				utils.Log().V(2).Info(fmt.Sprintf("write msg:\n %s", s))
 
-				inputMessages = nil
+				err := r.wsServer.msgRepository.AddMessages(messages)
+				if err != nil {
+					utils.Log().Error(err, "error while save messages into database")
+				}
 			}
 		}
 

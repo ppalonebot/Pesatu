@@ -7,6 +7,7 @@ import (
 	"pesatu/auth"
 	"pesatu/components/contacts"
 	"pesatu/utils"
+	"strconv"
 	"strings"
 	"time"
 
@@ -214,14 +215,44 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 	case JoinRoomPrivateAction:
 		me.handleJoinRoomPrivateMessage(message)
 
-		// case Info:
-		// 	me.handleInfoMessage(message)
+	case GetMessages:
+		me.handleGetMessages(message)
+	}
+}
+
+func (me *Client) handleGetMessages(message Message) {
+	roomID := message.Target.GetId()
+	if room := me.wsServer.findRoomByID(roomID); room != nil {
+		parts := strings.Split(message.Message, ",")
+
+		page, err := strconv.Atoi(parts[0])
+		if err != nil {
+			utils.Log().Error(err, "invalid page number: %s\n", parts[0])
+			return
+		}
+
+		limit, err := strconv.Atoi(parts[1])
+		if err != nil {
+			utils.Log().Error(err, "invalid limit number: %s\n", parts[1])
+			return
+		}
+
+		msgs, err := me.wsServer.msgRepository.FindMessagesByRoom(room.GetId(), page, limit)
+		retMsg := Messages{
+			Action:   message.Action,
+			Target:   room,
+			Sender:   me,
+			Messages: msgs,
+		}
+		utils.Log().V(2).Info(fmt.Sprintf("notify Room Joined, %s is registered in room %s", me.Name, room.Name))
+		me.send <- retMsg.encode()
 	}
 }
 
 func (me *Client) handleSendMessageAction(message Message) {
 	roomID := message.Target.GetId()
 	if room := me.wsServer.findRoomByID(roomID); room != nil {
+		message.Status = "acc"
 		utils.Log().V(2).Info(fmt.Sprintf("new msg in room %s", room.GetName()))
 		room.broadcast <- &message
 		room.writeMsgToDB <- &message
