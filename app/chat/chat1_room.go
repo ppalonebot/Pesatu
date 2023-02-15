@@ -183,13 +183,16 @@ func (room *Room) registerClientInRoom(client *Client) {
 func (room *Room) unregisterClientInRoom(client *Client) {
 	if _, ok := room.clients[client]; ok {
 		delete(room.clients, client)
-		utils.Log().V(2).Info("del client ", client.Name, "from room", room.Name)
+		utils.Log().V(2).Info(fmt.Sprintf("del client %s from room %s", client.Name, room.Name))
 
 		if len(room.clients) == 0 {
 			room.disposed = true
 			room.wg.Wait()
 			delete(room.wsServer.rooms, room)
-			utils.Log().V(2).Info("del room ", room.Name, "from room server")
+			utils.Log().V(2).Info(fmt.Sprintf("del room %s from room server", room.Name))
+
+			// }else {
+			// 	//optional broadcast leave room
 		}
 	}
 }

@@ -419,8 +419,15 @@ func (me *Client) notifyRoomJoined(room *Room, sender I_User, msg string) {
 		Sender:  sender,
 		Message: msg,
 	}
-	utils.Log().V(2).Info(fmt.Sprintf("notify Room Joined, %s is registered in room %s", me.Name, room.Name))
-	me.send <- message.encode()
+	// utils.Log().V(2).Info(fmt.Sprintf("notify Room Joined, %s is registered in room %s", me.Name, room.Name))
+	// me.send <- message.encode()
+	select {
+	case me.send <- message.encode():
+		utils.Log().V(2).Info(fmt.Sprintf("notify Room Joined, %s is registered in room %s", me.Name, room.Name))
+	default:
+		//channel closed
+		utils.Log().Error(nil, "chanel closed")
+	}
 }
 
 // func (me *Client) notifyInfo(room *Room, msg string, sender interface{}) {
