@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Room struct {
@@ -62,12 +63,11 @@ func (r *Room) writeToDBLoop() {
 		case <-time.After(1 * time.Second):
 			if len(inputMessages) > 0 {
 				var messages []*messageDB.CreateMessage
-				var s string
+				var update []string
 				for _, msg := range inputMessages {
-					if len(s) > 0 {
-						s = s + "\n" + msg.Time
-					} else {
-						s = msg.Time
+					if msg.Action == HasBeenRead {
+						update = append(update, msg.Message)
+						continue
 					}
 
 					CreatedAt, err := time.Parse(time.RFC3339, msg.Time)
@@ -75,22 +75,57 @@ func (r *Room) writeToDBLoop() {
 						CreatedAt = time.Now()
 					}
 
+					status := msg.Status
+					if msg.Status == "acc" {
+						status = "delv"
+					}
+
 					messages = append(messages, &messageDB.CreateMessage{
 						Action:  msg.Action,
 						Message: msg.Message,
 						RoomId:  r.GetId(),
 						Sender:  msg.Sender.(I_User).GetUID(),
-						Status:  msg.Status,
+						Status:  status,
 						Time:    CreatedAt,
 					})
-				}
+				} //end loop
+
 				inputMessages = nil
 
-				utils.Log().V(2).Info(fmt.Sprintf("write msg:\n %s", s))
+				if len(messages) > 0 {
+					res, err := r.wsServer.msgRepository.AddMessages(messages)
+					if err != nil {
+						utils.Log().Error(err, "error while save messages into database")
+					}
 
-				err := r.wsServer.msgRepository.AddMessages(messages)
-				if err != nil {
-					utils.Log().Error(err, "error while save messages into database")
+					message := &Messages{
+						Action:   Delivered,
+						Target:   r,
+						Messages: res,
+					}
+
+					utils.Log().V(2).Info("message delivered count: %d", len(res))
+					r.broadcastToClientsInRoom(message.encode())
+				}
+
+				if len(update) > 0 {
+					var msgIds []*primitive.ObjectID
+					var status []string
+					for i := range update {
+						objectID, err := primitive.ObjectIDFromHex(update[i])
+						if err != nil {
+							continue
+						}
+						msgIds = append(msgIds, &objectID)
+						status = append(status, HasBeenRead)
+					}
+
+					if len(msgIds) > 0 {
+						err := r.wsServer.msgRepository.UpdateStatus(msgIds, status)
+						if err != nil {
+							utils.Log().Error(err, "error while save status msessages into database")
+						}
+					}
 				}
 			}
 		}

@@ -21,11 +21,12 @@ type MessageRepository struct {
 type I_MessageRepo interface {
 	user.I_UserRepo
 	GetMsgCollection() *mongo.Collection
-	AddMessages(messages []*CreateMessage) error
+	AddMessages(messages []*CreateMessage) ([]*DelvMessage, error)
 	AddMessage(message *CreateMessage) (*DBMessage, error)
 	FindMessagesByRoom(roomId string, page, limit int) ([]*DBMessage, error)
 	RemoveMessage(msgId string) error
 	RemoveMessages(msgIds []string) error
+	UpdateStatus(msgId []*primitive.ObjectID, status []string) error
 }
 
 func NewMsgRepository(userCollection, msgCollection *mongo.Collection, ctx context.Context) I_MessageRepo {
@@ -37,23 +38,33 @@ func (me *MessageRepository) GetMsgCollection() *mongo.Collection {
 	return me.msgCollection
 }
 
-func (me *MessageRepository) AddMessages(messages []*CreateMessage) error {
+func (me *MessageRepository) AddMessages(messages []*CreateMessage) ([]*DelvMessage, error) {
 	docs := make([]interface{}, 0)
 	for i := range messages {
 		messages[i].UpdatedAt = time.Now()
 		doc, err := utils.ToDoc(messages[i])
 		if err != nil {
-			return err
+			return nil, err
 		}
 		docs = append(docs, doc)
 	}
 
-	_, err := me.msgCollection.InsertMany(me.ctx, docs)
+	res, err := me.msgCollection.InsertMany(me.ctx, docs)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	var insertedDocs []*DelvMessage // replace MyStruct with your struct type
+	for _, id := range res.InsertedIDs {
+		var doc *DelvMessage
+		err := me.msgCollection.FindOne(me.ctx, bson.M{"_id": id}).Decode(&doc)
+		if err != nil {
+			return nil, err
+		}
+		insertedDocs = append(insertedDocs, doc)
+	}
+
+	return insertedDocs, nil
 }
 
 func (me *MessageRepository) AddMessage(message *CreateMessage) (*DBMessage, error) {
@@ -168,6 +179,22 @@ func (me *MessageRepository) RemoveMessages(msgIds []string) error {
 	filter := bson.M{"_id": bson.M{"$in": objectIDs}}
 
 	_, err := me.msgCollection.DeleteMany(context.Background(), filter)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (me *MessageRepository) UpdateStatus(msgId []*primitive.ObjectID, status []string) error {
+	if len(msgId) != len(status) {
+		return fmt.Errorf("msgId and status slices have different lengths")
+	}
+
+	filter := bson.M{"_id": bson.M{"$in": msgId}}
+	update := bson.M{"$set": bson.M{"status": status, "updated_at": time.Now()}}
+
+	_, err := me.msgCollection.UpdateMany(me.ctx, filter, update)
 	if err != nil {
 		return err
 	}

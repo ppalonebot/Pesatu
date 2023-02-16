@@ -60,10 +60,7 @@ func parse() bool {
 	help := flag.Bool("h", false, "help info")
 	flag.Parse()
 
-	if *help {
-		return false
-	}
-	return true
+	return !*help
 }
 
 func readEnv() {
@@ -150,6 +147,7 @@ func main() {
 	logger.Info("MongoDB successfully connected...")
 
 	server = gin.Default()
+	server.SetTrustedProxies(nil)
 	limiter := ratelimit.NewBucketWithRate(100, 100)
 
 	if DevMode > 0 {

@@ -35,6 +35,8 @@ const (
 	RoomJoinedAction      Action = "room-joined"
 	Info                  Action = "info"
 	GetMessages           Action = "get-msg"
+	Delivered             Action = "delv"
+	HasBeenRead           Action = "read"
 )
 
 type I_User interface {

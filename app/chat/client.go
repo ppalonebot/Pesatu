@@ -217,6 +217,18 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 
 	case GetMessages:
 		me.handleGetMessages(message)
+
+	case HasBeenRead:
+		me.handleHasBeenRead(message)
+	}
+}
+
+func (me *Client) handleHasBeenRead(message Message) {
+	roomID := message.Target.GetId()
+	if room := me.wsServer.findRoomByID(roomID); room != nil {
+		utils.Log().V(2).Info(fmt.Sprintf("msg has been read id: %s", message.Message))
+		room.broadcast <- &message
+		room.writeMsgToDB <- &message
 	}
 }
 
@@ -252,8 +264,8 @@ func (me *Client) handleGetMessages(message Message) {
 func (me *Client) handleSendMessageAction(message Message) {
 	roomID := message.Target.GetId()
 	if room := me.wsServer.findRoomByID(roomID); room != nil {
-		message.Status = "acc"
 		utils.Log().V(2).Info(fmt.Sprintf("new msg in room %s", room.GetName()))
+		message.Status = "acc"
 		room.broadcast <- &message
 		room.writeMsgToDB <- &message
 	}
