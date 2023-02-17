@@ -110,18 +110,16 @@ func (r *Room) writeToDBLoop() {
 
 				if len(update) > 0 {
 					var msgIds []*primitive.ObjectID
-					var status []string
 					for i := range update {
 						objectID, err := primitive.ObjectIDFromHex(update[i])
 						if err != nil {
 							continue
 						}
 						msgIds = append(msgIds, &objectID)
-						status = append(status, HasBeenRead)
 					}
 
 					if len(msgIds) > 0 {
-						err := r.wsServer.msgRepository.UpdateStatus(msgIds, status)
+						err := r.wsServer.msgRepository.UpdateStatus(msgIds, HasBeenRead)
 						if err != nil {
 							utils.Log().Error(err, "error while save status msessages into database")
 						}

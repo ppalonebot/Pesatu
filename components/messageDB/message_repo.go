@@ -26,7 +26,7 @@ type I_MessageRepo interface {
 	FindMessagesByRoom(roomId string, page, limit int) ([]*DBMessage, error)
 	RemoveMessage(msgId string) error
 	RemoveMessages(msgIds []string) error
-	UpdateStatus(msgId []*primitive.ObjectID, status []string) error
+	UpdateStatus(msgId []*primitive.ObjectID, status string) error
 }
 
 func NewMsgRepository(userCollection, msgCollection *mongo.Collection, ctx context.Context) I_MessageRepo {
@@ -186,11 +186,7 @@ func (me *MessageRepository) RemoveMessages(msgIds []string) error {
 	return nil
 }
 
-func (me *MessageRepository) UpdateStatus(msgId []*primitive.ObjectID, status []string) error {
-	if len(msgId) != len(status) {
-		return fmt.Errorf("msgId and status slices have different lengths")
-	}
-
+func (me *MessageRepository) UpdateStatus(msgId []*primitive.ObjectID, status string) error {
 	filter := bson.M{"_id": bson.M{"$in": msgId}}
 	update := bson.M{"$set": bson.M{"status": status, "updated_at": time.Now()}}
 
