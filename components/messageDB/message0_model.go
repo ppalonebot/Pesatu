@@ -29,6 +29,6 @@ type DBMessage struct {
 
 type DelvMessage struct {
 	Id        primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
-	Time      time.Time          `json:"time,omitempty" bson:"time,omitempty"`
-	UpdatedAt time.Time          `json:"updated_at,omitempty" bson:"updated_at,omitempty"`
+	Time      string             `json:"time,omitempty" bson:"time,omitempty"`
+	UpdatedAt string             `json:"updated_at,omitempty" bson:"updated_at,omitempty"`
 }

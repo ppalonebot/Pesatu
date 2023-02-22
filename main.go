@@ -12,6 +12,7 @@ import (
 	"pesatu/auth"
 	"pesatu/components/contacts"
 	"pesatu/components/images"
+	"pesatu/components/roommember"
 	"pesatu/components/user"
 	"pesatu/components/userprofile"
 	"pesatu/utils"
@@ -191,6 +192,9 @@ func main() {
 
 	ContactRouteController := contacts.NewContactRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())
 	ContactRouteController.InitRouteTo(server)
+
+	RMRouteController := roommember.NewRoomMemberRoute(mongoclient, ctx, limiter)
+	RMRouteController.InitRouteTo(server)
 
 	//app:
 	wsServer := chat.NewWebsocketServer(mongoclient, ctx)

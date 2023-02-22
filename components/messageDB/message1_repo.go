@@ -56,12 +56,14 @@ func (me *MessageRepository) AddMessages(messages []*CreateMessage) ([]*DelvMess
 
 	var insertedDocs []*DelvMessage // replace MyStruct with your struct type
 	for _, id := range res.InsertedIDs {
-		var doc *DelvMessage
+		var doc *DBMessage
 		err := me.msgCollection.FindOne(me.ctx, bson.M{"_id": id}).Decode(&doc)
 		if err != nil {
 			return nil, err
 		}
-		insertedDocs = append(insertedDocs, doc)
+		insertedDocs = append(insertedDocs, &DelvMessage{
+			Id: doc.Id, Time: doc.Time.Format("2006-01-02T15:04:05.000Z"),
+			UpdatedAt: doc.UpdatedAt.Format("2006-01-02T15:04:05.000Z")})
 	}
 
 	return insertedDocs, nil
@@ -131,15 +133,16 @@ func (me *MessageRepository) FindMessagesByRoom(roomId string, page, limit int) 
 	defer cursor.Close(me.ctx)
 
 	var results []*DBMessage
-	for cursor.Next(me.ctx) {
-		rr := &DBMessage{}
-		err := cursor.Decode(rr)
+	// for cursor.Next(me.ctx) {
+	// 	rr := &DBMessage{}
+	// 	err := cursor.Decode(rr)
 
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, rr)
-	}
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	results = append(results, rr)
+	// }
+	cursor.All(me.ctx, &results)
 
 	if err := cursor.Err(); err != nil {
 		return nil, err
