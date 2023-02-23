@@ -207,148 +207,66 @@ func (me *RoomMemberService) FindLastMessagesGroupingByRoom(userID string, page,
 	skip := (page - 1) * limit
 
 	utils.Log().V(2).Info(fmt.Sprintf("s %d, l %d", skip, limit))
-	// pipeline := []bson.M{
-	// 	{"$match": bson.M{"usr_id": userID}},
-	// 	{"$lookup": bson.M{
-	// 		"from":         "messages",
-	// 		"localField":   "room_id",
-	// 		"foreignField": "room",
-	// 		"as":           "messages",
-	// 	}},
-	// 	{"$unwind": "$messages"},
-	// 	{"$sort": bson.M{
-	// 		"messages.time": -1,
-	// 	}},
-	// 	{"$lookup": bson.M{
-	// 		"from":         "users",
-	// 		"localField":   "messages.sender",
-	// 		"foreignField": "uid",
-	// 		"as":           "sender_usr",
-	// 	}},
-	// 	{"$unwind": "$sender_usr"},
-	// 	{"$lookup": bson.M{
-	// 		"from":         "rooms",
-	// 		"localField":   "room_id",
-	// 		"foreignField": "uid",
-	// 		"as":           "dbroom",
-	// 	}},
-	// 	{"$unwind": "$dbroom"},
-	// 	{"$group": bson.M{
-	// 		"_id": "$room_id",
-	// 		"latestMessage": bson.M{
-	// 			"$first": "$messages",
-	// 		},
-	// 		"time": bson.M{
-	// 			"$first": "$messages._id",
-	// 		},
-	// 		"sender": bson.M{
-	// 			"$first": "$sender_usr.username",
-	// 		},
-	// 		"private": bson.M{
-	// 			"$first": "$dbroom.private",
-	// 		},
-	// 		"unreadCount": bson.M{
-	// 			"$sum": bson.M{
-	// 				"$cond": bson.M{
-	// 					"if": bson.M{
-	// 						"$and": []bson.M{
-	// 							{"$ne": []interface{}{"$messages.status", "read"}},
-	// 							{"$ne": []interface{}{"$messages.sender", userID}},
-	// 						},
-	// 					},
-	// 					"then": 1,
-	// 					"else": 0,
-	// 				},
-	// 			},
-	// 		},
-	// 	}},
-	// 	{"$sort": bson.M{
-	// 		"group.time": 1,
-	// 	}},
-	// 	{"$skip": skip},
-	// 	{"$limit": limit},
-	// }
-	pipeline := bson.A{
-		bson.M{
-			"$match": bson.M{"usr_id": userID},
-		},
-		bson.M{
-			"$lookup": bson.M{
-				"from":         "messages",
-				"localField":   "room_id",
-				"foreignField": "room",
-				"as":           "messages",
+	pipeline := []bson.M{
+		{"$match": bson.M{"usr_id": userID}},
+		{"$lookup": bson.M{
+			"from":         "messages",
+			"localField":   "room_id",
+			"foreignField": "room",
+			"as":           "messages",
+		}},
+		{"$unwind": "$messages"},
+		{"$sort": bson.M{
+			"messages.time": -1,
+		}},
+		{"$lookup": bson.M{
+			"from":         "users",
+			"localField":   "messages.sender",
+			"foreignField": "uid",
+			"as":           "sender_usr",
+		}},
+		{"$unwind": "$sender_usr"},
+		{"$lookup": bson.M{
+			"from":         "rooms",
+			"localField":   "room_id",
+			"foreignField": "uid",
+			"as":           "dbroom",
+		}},
+		{"$unwind": "$dbroom"},
+		{"$group": bson.M{
+			"_id": "$room_id",
+			"latestMessage": bson.M{
+				"$first": "$messages",
 			},
-		},
-		bson.M{
-			"$unwind": "$messages",
-		},
-		bson.M{
-			"$sort": bson.M{
-				"messages.time": -1,
+			"time": bson.M{
+				"$first": "$messages._id",
 			},
-		},
-		bson.M{
-			"$lookup": bson.M{
-				"from":         "users",
-				"localField":   "messages.sender",
-				"foreignField": "uid",
-				"as":           "sender_usr",
+			"sender": bson.M{
+				"$first": "$sender_usr.username",
 			},
-		},
-		bson.M{
-			"$unwind": "$sender_usr",
-		},
-		bson.M{
-			"$lookup": bson.M{
-				"from":         "rooms",
-				"localField":   "room_id",
-				"foreignField": "uid",
-				"as":           "dbroom",
+			"private": bson.M{
+				"$first": "$dbroom.private",
 			},
-		},
-		bson.M{
-			"$unwind": "$dbroom",
-		},
-		bson.M{
-			"$group": bson.M{
-				"_id": "$room_id",
-				"latestMessage": bson.M{
-					"$first": "$messages",
-				},
-				"sender": bson.M{
-					"$first": "$sender_usr.username",
-				},
-				"private": bson.M{
-					"$first": "$dbroom.private",
-				},
-				"unreadCount": bson.M{
-					"$sum": bson.M{
-						"$cond": bson.M{
-							"if": bson.M{
-								"$and": bson.A{
-									bson.M{"$ne": bson.A{"$messages.status", "read"}},
-									bson.M{"$ne": bson.A{"$messages.sender", userID}},
-								},
+			"unreadCount": bson.M{
+				"$sum": bson.M{
+					"$cond": bson.M{
+						"if": bson.M{
+							"$and": []bson.M{
+								{"$ne": []interface{}{"$messages.status", "read"}},
+								{"$ne": []interface{}{"$messages.sender", userID}},
 							},
-							"then": 1,
-							"else": 0,
 						},
+						"then": 1,
+						"else": 0,
 					},
 				},
 			},
-		},
-		bson.M{
-			"$sort": bson.M{
-				"latestMessage.time": -1,
-			},
-		},
-		bson.M{
-			"$skip": skip,
-		},
-		bson.M{
-			"$limit": limit,
-		},
+		}},
+		{"$sort": bson.M{
+			"latestMessage.time": -1,
+		}},
+		{"$skip": skip},
+		{"$limit": limit},
 	}
 
 	cursor, err := me.memberCollection.Aggregate(me.ctx, pipeline)
