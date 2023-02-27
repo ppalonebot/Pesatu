@@ -215,8 +215,10 @@ func (room *Room) registerClientInRoom(client *Client) {
 
 func (room *Room) unregisterClientInRoom(client *Client) {
 	if _, ok := room.clients[client]; ok {
-		delete(room.clients, client)
 		utils.Log().V(2).Info(fmt.Sprintf("del client %s from room %s", client.Name, room.Name))
+		client.disposed = true
+		client.wg.Wait()
+		delete(room.clients, client)
 
 		if len(room.clients) == 0 {
 			room.disposed = true

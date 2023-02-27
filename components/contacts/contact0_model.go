@@ -26,6 +26,13 @@ type SearchUser struct {
 	Page    string `json:"page"`
 	Limit   string `json:"limit"`
 }
+
+type SearchUserCount struct {
+	UID     string `json:"uid"`
+	Keyword string `json:"keyword"`
+	Status  string `json:"status"`
+}
+
 type ResponseStatus struct {
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at,omitempty" bson:"created_at,omitempty"`

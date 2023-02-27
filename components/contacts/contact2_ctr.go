@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type ContactController struct {
@@ -138,6 +140,54 @@ func (me *ContactController) CreateContact(validuser *auth.Claims, newContact *C
 	return &result, nil, http.StatusCreated
 }
 
+func (me *ContactController) RemoveContact(validuser *auth.Claims, delContact *CreateContact) (bool, *jsonrpc2.RPCError, int) {
+	Logger.V(2).Info(fmt.Sprintf("remove contact %s to %s", delContact.UID, delContact.ToUsrName))
+
+	if validuser.GetUID() != delContact.UID {
+		return false, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "user uid did not match"}, http.StatusOK
+	}
+
+	_, err := utils.IsValidUsername(delContact.ToUsrName)
+	if err != nil {
+		return false, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}, http.StatusOK
+	}
+
+	targetuser, err := me.contactService.FindUserConnection(validuser.GetUID(), delContact.ToUsrName)
+	if err != nil {
+		return false, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: fmt.Sprintf("can not find requested user to check connnection. %s", err.Error())}, http.StatusOK
+	}
+
+	user, err := me.contactService.FindUserConnection(targetuser.UID, validuser.GetUsername())
+	if err != nil {
+		return false, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: fmt.Sprintf("jwt error, username. %s", err.Error())}, http.StatusOK
+	}
+
+	if validuser.GetUID() != user.UID {
+		return false, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "user uid did not match 2"}, http.StatusOK
+	}
+
+	var ids []*primitive.ObjectID
+	if targetuser.Contact != nil {
+		ids = append(ids, &targetuser.Contact.Id)
+	}
+	if user.Contact != nil {
+		ids = append(ids, &user.Contact.Id)
+	}
+
+	if len(ids) == 0 {
+		return false, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: "connection not found"}, http.StatusOK
+	}
+
+	err = me.contactService.DeleteContacts(ids)
+	if err != nil {
+		Logger.Error(err, "error deleting contact")
+		return false, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusInternalServerError
+	}
+
+	Logger.V(2).Info("delete contact success")
+	return true, nil, http.StatusCreated
+}
+
 func (me *ContactController) SearchUsers(keyword, pageStr, limitStr, userUID, status string) ([]*UserContact, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("search users %s", keyword))
 	var page = pageStr
@@ -211,4 +261,58 @@ func (me *ContactController) SearchUsers(keyword, pageStr, limitStr, userUID, st
 
 	Logger.V(2).Info(fmt.Sprintf("search count %d", len(usercontacts)))
 	return usercontacts, nil, http.StatusOK
+}
+
+func (me *ContactController) SearchUserCount(keyword, userUID, status string) (int64, *jsonrpc2.RPCError, int) {
+	Logger.V(2).Info(fmt.Sprintf("search user count %s", keyword))
+	//handle for keyword empty
+	if keyword == "@" {
+		return 0, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid search input"}, http.StatusOK
+	}
+
+	if ok := utils.IsValidUid(userUID); !ok {
+		return 0, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "uid invalid"}, http.StatusOK
+	}
+
+	if ok := checkStatus(status); !ok {
+		return 0, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "status invalid"}, http.StatusOK
+	}
+
+	user, err := me.contactService.FindUserById(userUID)
+	if err != nil {
+		if strings.Contains(err.Error(), "exists") {
+			return 0, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
+		}
+		return 0, &jsonrpc2.RPCError{Code: http.StatusBadGateway, Message: err.Error()}, http.StatusOK
+	}
+
+	var usercontactcount int64
+	if strings.HasPrefix(keyword, "@") {
+		keyword = keyword[1:]
+		keyword = strings.ToLower(keyword)
+		_, err = utils.IsValidUsername(keyword)
+		if err != nil {
+			return 0, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: fmt.Sprintf("invalid username input. %s", err.Error())}, http.StatusOK
+		}
+		usercontactcount, err = me.contactService.FindUserCountByUsername(user.UID, keyword, status)
+	} else {
+		_, err = utils.IsValidName(keyword)
+		keyword2 := strings.ToLower(keyword)
+		keyword2 = strings.Replace(keyword2, " ", "", -1)
+		if ok, _ := utils.IsValidUsername(keyword2); !ok {
+			keyword2 = "#ojan!"
+		}
+
+		if err != nil && keyword != "" {
+			return 0, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: fmt.Sprintf("invalid name input. %s", err.Error())}, http.StatusOK
+		}
+		usercontactcount, err = me.contactService.FindUserCountByName(user.UID, keyword, keyword2, status)
+	}
+
+	if err != nil {
+		return 0, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}, http.StatusOK
+	}
+
+	Logger.V(2).Info(fmt.Sprintf("search count %d", usercontactcount))
+	return usercontactcount, nil, http.StatusOK
 }

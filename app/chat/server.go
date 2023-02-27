@@ -99,11 +99,13 @@ func (server *WsServer) unregisterClient(client *Client) {
 		//todo: Publish user left in PubSub
 		//server.publishClientLeft(client)
 
+		utils.Log().V(2).Info(fmt.Sprintf("del connection %s @%s", client.Name, client.conn.RemoteAddr().String()))
+		client.disposed = true
+		client.wg.Wait()
 		delete(server.clients, client)
 		// Remove user from repo
 		// server.userRepository.RemoveUser(client)
 
-		utils.Log().V(2).Info(fmt.Sprintf("del connection %s @%s", client.Name, client.conn.RemoteAddr().String()))
 	}
 }
 

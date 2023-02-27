@@ -24,6 +24,7 @@ type I_MessageRepo interface {
 	AddMessages(messages []*CreateMessage) ([]*DelvMessage, error)
 	AddMessage(message *CreateMessage) (*DBMessage, error)
 	FindMessagesByRoom(roomId string, page, limit int) ([]*DBMessage, error)
+	FindMessagesByRoomName(roomName string, page, limit int) ([]*DBMessage, error)
 	RemoveMessage(msgId string) error
 	RemoveMessages(msgIds []string) error
 	UpdateStatus(msgId []*primitive.ObjectID, status string) error
@@ -142,6 +143,62 @@ func (me *MessageRepository) FindMessagesByRoom(roomId string, page, limit int) 
 	// 	}
 	// 	results = append(results, rr)
 	// }
+	cursor.All(me.ctx, &results)
+
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(results) == 0 {
+		return []*DBMessage{}, nil
+	}
+
+	return results, nil
+}
+
+func (me *MessageRepository) FindMessagesByRoomName(roomName string, page, limit int) ([]*DBMessage, error) {
+	if page == 0 {
+		page = 1
+	}
+
+	if limit == 0 {
+		limit = 10
+	}
+
+	skip := (page - 1) * limit
+
+	pipeline := []bson.M{
+		{"$match": bson.M{
+			"name": roomName,
+		}},
+		{"$lookup": bson.M{
+			"from":         "users",
+			"localField":   "sender",
+			"foreignField": "uid",
+			"as":           "sender_user",
+		}},
+		{"$addFields": bson.M{
+			"sender": bson.M{
+				"$arrayElemAt": []interface{}{"$sender_user.username", 0},
+			},
+		}},
+		{"$project": bson.M{
+			"sender_user": 0,
+		}},
+		{"$sort": bson.M{
+			"time": -1,
+		}},
+		{"$skip": skip},
+		{"$limit": limit},
+	}
+
+	cursor, err := me.msgCollection.Aggregate(me.ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(me.ctx)
+
+	var results []*DBMessage
 	cursor.All(me.ctx, &results)
 
 	if err := cursor.Err(); err != nil {

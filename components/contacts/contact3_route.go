@@ -69,8 +69,12 @@ func (me *ContactRoute) RPCHandle(ctx *gin.Context) {
 	switch jreq.Method {
 	case "SearchUser":
 		statuscode = me.method_SearchUser(ctx, &jreq, jres)
+	case "SearchUserCount":
+		statuscode = me.method_SearchUserCount(ctx, &jreq, jres)
 	case "AddContact":
 		statuscode = me.method_AddContact(ctx, &jreq, jres)
+	case "RemoveContact":
+		statuscode = me.method_RemoveContact(ctx, &jreq, jres)
 	// case "GetContacts":
 	// 	statuscode = me.method_GetContacts(ctx, &jreq, jres)
 	default:
@@ -125,6 +129,38 @@ func (me *ContactRoute) method_SearchUser(ctx *gin.Context, jreq *jsonrpc2.RPCRe
 	return code
 }
 
+func (me *ContactRoute) method_SearchUserCount(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
+	validuser := vuser.(*auth.Claims)
+	if validuser.IsExpired() {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
+	}
+
+	var reg *SearchUserCount
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	if validuser.GetUID() != reg.UID {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "ilegal jwt"}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.contactController.SearchUserCount(reg.Keyword, reg.UID, reg.Status)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
 func (me *ContactRoute) method_AddContact(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
 	vuser, ok := ctx.Get("validuser")
 	if !ok {
@@ -151,6 +187,38 @@ func (me *ContactRoute) method_AddContact(ctx *gin.Context, jreq *jsonrpc2.RPCRe
 	}
 
 	res, e, code := me.contactController.CreateContact(validuser, reg)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	return code
+}
+
+func (me *ContactRoute) method_RemoveContact(ctx *gin.Context, jreq *jsonrpc2.RPCRequest, jres *jsonrpc2.RPCResponse) int {
+	vuser, ok := ctx.Get("validuser")
+	if !ok {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "unauthorized"}
+		return http.StatusUnauthorized
+	}
+
+	validuser := vuser.(*auth.Claims)
+	if validuser.IsExpired() {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusUnauthorized, Message: "session expired"}
+		return http.StatusUnauthorized
+	}
+
+	var reg *CreateContact
+	err := json.Unmarshal(jreq.Params, &reg)
+	if err != nil {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}
+		return http.StatusBadRequest
+	}
+
+	if validuser.GetUID() != reg.UID {
+		jres.Error = &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "ilegal jwt"}
+		return http.StatusBadRequest
+	}
+
+	res, e, code := me.contactController.RemoveContact(validuser, reg)
 	jres.Result, _ = utils.ToRawMessage(res)
 	jres.Error = e
 

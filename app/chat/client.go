@@ -9,6 +9,7 @@ import (
 	"pesatu/utils"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -28,6 +29,8 @@ type Client struct {
 	Avatar         string `json:"avatar"`
 	rooms          map[*Room]bool
 	contactService contacts.I_ContactRepo
+	wg             *sync.WaitGroup
+	disposed       bool
 }
 
 func newClient(conn *websocket.Conn, wsServer *WsServer, username string, ID string, contactRepo contacts.I_ContactRepo) (*Client, error) {
@@ -35,6 +38,9 @@ func newClient(conn *websocket.Conn, wsServer *WsServer, username string, ID str
 	if err != nil {
 		return nil, err
 	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
 
 	client := &Client{
 		Name:           user.Name,
@@ -45,6 +51,8 @@ func newClient(conn *websocket.Conn, wsServer *WsServer, username string, ID str
 		send:           make(chan []byte, 256),
 		rooms:          make(map[*Room]bool),
 		contactService: contactRepo,
+		wg:             &wg,
+		disposed:       false,
 	}
 
 	if ID != "" {
@@ -109,9 +117,9 @@ func (me *Client) GetUsername() string {
 }
 
 func (me *Client) readThread() {
-	defer func() {
-		me.disconnect()
-	}()
+	// defer func() {
+	// 	me.disconnect()
+	// }()
 
 	me.conn.SetReadLimit(maxMessageSize)
 	me.conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -140,7 +148,13 @@ func (me *Client) readThread() {
 		}
 
 		me.handleNewMessage(jsonMessage)
+
+		if me.disposed {
+			break
+		}
 	}
+	me.wg.Done()
+	me.disconnect()
 }
 
 func (me *Client) writeThread() {
@@ -185,6 +199,7 @@ func (me *Client) writeThread() {
 }
 
 func (me *Client) disconnect() {
+	utils.Log().Info("disconnect " + me.Username)
 	me.wsServer.unregister <- me
 	for room := range me.rooms {
 		room.unregister <- me
@@ -234,7 +249,28 @@ func (me *Client) handleHasBeenRead(message Message) {
 
 func (me *Client) handleGetMessages(message Message) {
 	roomID := message.Target.GetId()
-	if room := me.wsServer.findRoomByID(roomID); room != nil {
+	room := me.wsServer.findRoomByID(roomID)
+
+	flag := false
+	if room == nil {
+
+		dbRoom, err := me.wsServer.roomRepository.FindRoomByName(message.Target.GetName())
+		if err != nil {
+			me.notifyInfo(nil, message.Sender.(I_User), JoinRoomPrivateAction+", can not find room", "error", message.Time)
+			return
+		}
+
+		inputUUID, err := uuid.Parse(dbRoom.UID)
+		if err != nil {
+			me.notifyInfo(nil, message.Sender.(I_User), JoinRoomPrivateAction+", invalid uid", "error", message.Time)
+			return
+		}
+
+		room = &Room{Name: dbRoom.Name, ID: inputUUID, Private: dbRoom.Private}
+		flag = true
+	}
+
+	if room != nil {
 		parts := strings.Split(message.Message, ",")
 
 		page, err := strconv.Atoi(parts[0])
@@ -255,6 +291,9 @@ func (me *Client) handleGetMessages(message Message) {
 			Target:   room,
 			Sender:   me,
 			Messages: msgs,
+		}
+		if flag {
+			retMsg.Target.ID = uuid.Nil
 		}
 		utils.Log().V(2).Info(fmt.Sprintf("notify Room Joined, %s is registered in room %s", me.Name, room.Name))
 		me.send <- retMsg.encode()
@@ -327,22 +366,42 @@ func (me *Client) handleLeaveRoomMessage(message Message) {
 // }
 
 func (me *Client) handleJoinRoomPrivateMessage(message Message) {
+	utils.Log().V(2).Info("handleJoinRoomPrivateMessage " + message.Message + " " + message.Time)
 	_, err := utils.IsValidUsername(message.Message)
 	if err != nil {
-		utils.Log().Error(err, "Join Room Private error while checking target username")
+		utils.Log().Error(err, fmt.Sprintf("Join Room Private error while checking target username: %s", message.Message))
+		sender := NewSender("", "", message.Message, JoinRoomPrivateAction)
+		me.notifyInfo(nil, sender, JoinRoomPrivateAction+", username error", "error", message.Time)
 		return
 	}
 
 	targetuser, err := me.contactService.FindUserConnection(me.GetUID(), message.Message)
 	if err != nil {
 		utils.Log().Error(err, "Join Room Private but can not find requested user to check connnection")
+		sender := NewSender("", "", message.Message, JoinRoomPrivateAction)
+		me.notifyInfo(nil, sender, JoinRoomPrivateAction+", can not find requested user to connect", "error", message.Time)
 		return
 	}
 
 	roomName := utils.JoinAndSort(me.GetUsername(), targetuser.Username, "-")
 
-	if targetuser.Contact.Status != contacts.Accepted {
+	if targetuser.Contact == nil || targetuser.Contact.Status != contacts.Accepted {
 		utils.Log().Info("Join Room Private but you are not in their contact")
+		sender := NewSender(targetuser.UID, targetuser.Name, targetuser.Username, targetuser.Avatar)
+		dbRoom, err := me.wsServer.roomRepository.FindRoomByName(roomName)
+		if err != nil {
+			me.notifyInfo(nil, sender, JoinRoomPrivateAction+", can not find room", "error", message.Time)
+			return
+		}
+
+		// inputUUID, err := uuid.Parse(dbRoom.UID)
+		// if err != nil {
+		// 	me.notifyInfo(nil, sender, JoinRoomPrivateAction+", invalid uid", "error", message.Time)
+		// 	return
+		// }
+
+		room := &Room{Name: dbRoom.Name, ID: uuid.Nil, Private: dbRoom.Private}
+		me.notifyInfo(room, sender, JoinRoomPrivateAction+", you are not in contact", "error", message.Time)
 		return
 	}
 
@@ -442,12 +501,14 @@ func (me *Client) notifyRoomJoined(room *Room, sender I_User, msg string) {
 	}
 }
 
-// func (me *Client) notifyInfo(room *Room, msg string, sender interface{}) {
-// 	message := Message{
-// 		Action:  Info,
-// 		Target:  room,
-// 		Sender:  sender,
-// 		Message: msg,
-// 	}
-// 	me.send <- message.encode()
-// }
+func (me *Client) notifyInfo(room *Room, sender I_User, msg, status, time string) {
+	message := Message{
+		Action:  Info,
+		Target:  room,
+		Sender:  sender,
+		Message: msg,
+		Status:  status,
+		Time:    time,
+	}
+	me.send <- message.encode()
+}

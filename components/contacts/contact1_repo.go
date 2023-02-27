@@ -19,12 +19,15 @@ type I_ContactRepo interface {
 	CreateContact(contact *Contact) (*DBContact, error)
 	UpdateContact(id primitive.ObjectID, contact *DBContact) (*DBContact, error)
 	DeleteContact(id primitive.ObjectID) error
+	DeleteContacts(ids []*primitive.ObjectID) error
 	FindMyContacts(myUid, status string, page, limit int) ([]*DBContact, error)
 	FindMyContactTo(myUid, to string) (*DBContact, error)
 	FindContactsRequest(toUid string, page, limit int) ([]*DBContact, error)
-	FindUserConnection(uidOwner, toUid string) (*DBUserContact, error)
+	FindUserConnection(uidOwner, toUsername string) (*DBUserContact, error)
 	FindUsersByName(uidOwner, name, username, status string, page, limit int) ([]*UserContact, error)
 	FindUsersByUsername(uidOwner, name, status string, page, limit int) ([]*UserContact, error)
+	FindUserCountByName(uidOwner, name, username, status string) (int64, error)
+	FindUserCountByUsername(uidOwner, username, status string) (int64, error)
 }
 
 type ContactService struct {
@@ -89,6 +92,21 @@ func (me *ContactService) DeleteContact(id primitive.ObjectID) error {
 
 	if res.DeletedCount == 0 {
 		return errors.New("no contact with that Id exists")
+	}
+
+	return nil
+}
+
+func (me *ContactService) DeleteContacts(ids []*primitive.ObjectID) error {
+	query := bson.M{"_id": bson.M{"$in": ids}}
+
+	res, err := me.contactCollection.DeleteMany(me.ctx, query)
+	if err != nil {
+		return err
+	}
+
+	if res.DeletedCount == 0 {
+		return errors.New("no contacts with those Ids exist")
 	}
 
 	return nil
@@ -361,7 +379,6 @@ func (me *ContactService) FindUsersByName(uidOwner, name, username, status strin
 	if status != "" {
 		pipeline = append(pipeline, bson.M{"$match": bson.M{"contact": bson.M{"$ne": nil}}})
 	}
-	// pipeline = append(pipeline, bson.M{"$skip": skip}, bson.M{"$limit": limit})
 
 	return me.findUsers(pipeline)
 }
@@ -387,7 +404,6 @@ func (me *ContactService) FindUsersByUsername(uidOwner, username, status string,
 	}
 
 	pipeline := []bson.M{
-		//{"$match": bson.M{"username": bson.M{"$regex": fmt.Sprintf(".*%s.*", username)}}},
 		{"$match": bson.M{"username": bson.M{"$regex": fmt.Sprintf(".*%s.*", username)}, "uid": bson.M{"$ne": uidOwner}}},
 		{"$lookup": bson.M{
 			"from": "contact",
@@ -416,22 +432,106 @@ func (me *ContactService) FindUsersByUsername(uidOwner, username, status string,
 	if status != "" {
 		pipeline = append(pipeline, bson.M{"$match": bson.M{"contact": bson.M{"$ne": nil}}})
 	}
-	// pipeline = append(pipeline, bson.M{"$skip": skip}, bson.M{"$limit": limit})
 
 	return me.findUsers(pipeline)
 }
 
-// func (me *ContactService) FindUserByUsername(username string) (*user.DBUser, error) {
-// 	query := bson.M{"username": username}
+func (me *ContactService) FindUserCountByName(uidOwner, name, username, status string) (int64, error) {
+	temp := []bson.M{
+		{"$eq": []interface{}{"$owner", "$$userUID"}},
+		{"$eq": []interface{}{"$to", uidOwner}},
+	}
 
-// 	var user *user.DBUser
+	if status != "" {
+		temp = append(temp, bson.M{"$eq": []interface{}{"$status", status}})
+	}
 
-// 	if err := me.userCollection.FindOne(me.ctx, query).Decode(&user); err != nil {
-// 		if err == mongo.ErrNoDocuments {
-// 			return nil, errors.New("user unavailable")
-// 		}
-// 		return nil, err
-// 	}
+	pipeline := []bson.M{
+		{"$match": bson.M{
+			"$or": []bson.M{
+				{"name": bson.M{"$regex": fmt.Sprintf(".*%s.*", name), "$options": "i"}},
+				{"username": bson.M{"$regex": fmt.Sprintf(".*%s.*", username)}},
+			},
+			"uid": bson.M{"$ne": uidOwner},
+		}},
+		{"$lookup": bson.M{
+			"from": "contact",
+			"let":  bson.M{"userUID": "$uid"},
+			"pipeline": []bson.M{
+				{"$match": bson.M{"$expr": bson.M{
+					"$and": temp,
+				}}},
+			},
+			"as": "temp_contact",
+		}},
+		{"$addFields": bson.M{
+			"contact": bson.M{"$arrayElemAt": []interface{}{"$temp_contact", 0}},
+		}},
+		{"$match": bson.M{"contact": bson.M{"$ne": nil}}},
+		{"$count": "total_count"},
+	}
 
-// 	return user, nil
-// }
+	cursor, err := me.GetCollection().Aggregate(me.ctx, pipeline)
+	if err != nil {
+		return 0, err
+	}
+	defer cursor.Close(context.Background())
+
+	var result struct {
+		TotalCount int64 `bson:"total_count"`
+	}
+	if cursor.Next(context.Background()) {
+		if err := cursor.Decode(&result); err != nil {
+			return 0, err
+		}
+	}
+
+	return result.TotalCount, nil
+}
+
+func (me *ContactService) FindUserCountByUsername(uidOwner, username, status string) (int64, error) {
+	temp := []bson.M{
+		{"$eq": []interface{}{"$owner", "$$userUID"}},
+		{"$eq": []interface{}{"$to", uidOwner}},
+	}
+
+	if status != "" {
+		temp = append(temp, bson.M{"$eq": []interface{}{"$status", status}})
+	}
+
+	pipeline := []bson.M{
+		{"$match": bson.M{"username": bson.M{"$regex": fmt.Sprintf(".*%s.*", username)}, "uid": bson.M{"$ne": uidOwner}}},
+		{"$lookup": bson.M{
+			"from": "contact",
+			"let":  bson.M{"userUID": "$uid"},
+			"pipeline": []bson.M{
+				{"$match": bson.M{"$expr": bson.M{
+					"$and": temp,
+				}}},
+			},
+			"as": "temp_contact",
+		}},
+		{"$addFields": bson.M{
+			"contact": bson.M{"$arrayElemAt": []interface{}{"$temp_contact", 0}},
+		}},
+		{"$match": bson.M{"contact": bson.M{"$ne": nil}}},
+		{"$count": "total_count"},
+	}
+
+	cursor, err := me.GetCollection().Aggregate(me.ctx, pipeline)
+	if err != nil {
+		return 0, err
+	}
+	defer cursor.Close(context.Background())
+
+	var result struct {
+		TotalCount int64 `bson:"total_count"`
+	}
+	if cursor.Next(context.Background()) {
+		if err := cursor.Decode(&result); err != nil {
+			return 0, err
+		}
+	}
+
+	return result.TotalCount, nil
+}
