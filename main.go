@@ -23,6 +23,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/juju/ratelimit"
 	log "github.com/pion/ion-sfu/pkg/logger"
+	"github.com/pion/ion-sfu/pkg/middlewares/datachannel"
+	"github.com/pion/ion-sfu/pkg/sfu"
+	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -42,18 +45,70 @@ var (
 	logger         = log.New()
 	limiter        *ratelimit.Bucket
 	Env            string
+	conf           = sfu.Config{}
+	file           string
+	portRangeLimit uint16
 )
 
 func showHelp() {
 	fmt.Printf("Usage:%s {params}\n", os.Args[0])
 	fmt.Println("      -a {listen addr}")
 	fmt.Println("      -h (show help info)")
+	fmt.Println("      -c {sfu config file}")
 	fmt.Println("      -v {0-2} (verbosity level, default 0)")
 	fmt.Println("      -dev {0-2} (developer mode, default disabled (0), enable cors (1), also enable delay (2))")
 	fmt.Println("      -env .env file location path, default current")
 }
 
+func loadViCallConfig() bool {
+	_, err := os.Stat(file)
+	if err != nil {
+		logger.Error(err, "error while reading stat of vicall config file")
+		return false
+	}
+
+	viper.SetConfigFile(file)
+	viper.SetConfigType("toml")
+
+	err = viper.ReadInConfig()
+	if err != nil {
+		logger.Error(err, "config file read failed", "file", file)
+		return false
+	}
+
+	//put config into conf struct
+	err = viper.GetViper().Unmarshal(&conf)
+	if err != nil {
+		logger.Error(err, "sfu config file loaded failed", "file", file)
+		return false
+	}
+
+	if len(conf.WebRTC.ICEPortRange) > 2 {
+		logger.Error(nil, "config file loaded failed. webrtc port must be [min,max]", "file", file)
+		return false
+	}
+
+	if len(conf.WebRTC.ICEPortRange) != 0 && conf.WebRTC.ICEPortRange[1]-conf.WebRTC.ICEPortRange[0] < portRangeLimit {
+		logger.Error(nil, "config file loaded failed. webrtc port must be [min, max] and max - min >= portRangeLimit", "file", file, "portRangeLimit", portRangeLimit)
+		return false
+	}
+
+	if len(conf.Turn.PortRange) > 2 {
+		logger.Error(nil, "config file loaded failed. turn port must be [min,max]", "file", file)
+		return false
+	}
+
+	if logConfig.Config.V < 0 {
+		logger.Error(nil, "Logger V-Level cannot be less than 0")
+		return false
+	}
+
+	logger.V(0).Info("Config file loaded", "file", file)
+	return true
+}
+
 func parse() bool {
+	flag.StringVar(&file, "c", "config.toml", "config file")
 	flag.StringVar(&Addr, "a", ":7000", "address to use")
 	flag.IntVar(&verbosityLevel, "v", -1, "verbosity level, higher value - more logs")
 	flag.IntVar(&DevMode, "dev", 0, "dev mode to enable/disable developer mode")
@@ -102,6 +157,12 @@ func readEnv() {
 	if len(hmacsecret) == 32 {
 		utils.Log().V(2).Info("using .env hmacsecret")
 		auth.SetHmacSecret(hmacsecret)
+	}
+
+	strPortRangeLimit := os.Getenv("VCPortRangeLimit")
+	if len(strPortRangeLimit) > 0 {
+		utils.Log().V(2).Info("webRTC port range limit: " + strPortRangeLimit)
+		portRangeLimit = utils.StringToUint16(strPortRangeLimit, 100)
 	}
 }
 
@@ -197,9 +258,22 @@ func main() {
 	RMRouteController.InitRouteTo(server)
 
 	//app:
-	wsServer := chat.NewWebsocketServer(mongoclient, ctx)
-	wsServer.InitRouteTo(server, ContactRouteController.GetContactService(), DevMode)
-	go wsServer.Run()
+	
+	if !loadViCallConfig() {
+		wsServer := chat.NewWebsocketServer(mongoclient, ctx, nil)
+		wsServer.InitRouteTo(server, ContactRouteController.GetContactService(), DevMode)
+		go wsServer.Run()
+	} else {
+		// Pass logr instance
+		sfu.Logger = logger
+		s := sfu.NewSFU(conf)
+		dc := s.NewDatachannel(sfu.APIChannelLabel) //ion-sfu
+		dc.Use(datachannel.SubscriberAPI)
+
+		wsServer := chat.NewWebsocketServer(mongoclient, ctx, s)
+		wsServer.InitRouteTo(server, ContactRouteController.GetContactService(), DevMode)
+		go wsServer.Run()
+	}
 
 	// Use the redirectToAppMiddleware middleware to wrap the handler
 	server.Use(redirectToAppMiddleware())

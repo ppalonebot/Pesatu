@@ -48,6 +48,11 @@ func GenerateRandomNumber() string {
 	return numString
 }
 
+func GetRandomUUID() string {
+	id := uuid.New().String()
+	return id
+}
+
 func ToDoc(v interface{}) (doc *bson.D, err error) {
 	data, err := bson.Marshal(v)
 	if err != nil {
@@ -131,6 +136,15 @@ func IsAlphaNumericLowcase(s string) bool {
 	}
 
 	return true
+}
+
+func StringToUint16(str string, defaultReturn uint16) uint16 {
+	// Use strconv.ParseUint() function to convert string to uint16
+	i, err := strconv.ParseUint(str, 10, 16)
+	if err != nil {
+		return defaultReturn
+	}
+	return uint16(i)
 }
 
 func IsValidUsername(s string) (bool, error) {

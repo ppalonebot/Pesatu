@@ -1,12 +1,15 @@
 package jsonrpc2
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 type RPCRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params,omitempty"`
 	ID      string          `json:"id,omitempty"`
+	Notif   bool            `json:"-"`
 }
 
 type RPCResponse struct {

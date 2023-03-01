@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"pesatu/app/vicall"
 	"pesatu/auth"
 	"pesatu/components/contacts"
+	"pesatu/jsonrpc2"
 	"pesatu/utils"
 	"strconv"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/pion/ion-sfu/pkg/sfu"
 )
 
 // Client represents the websocket client at the server
@@ -29,6 +32,7 @@ type Client struct {
 	Avatar         string `json:"avatar"`
 	rooms          map[*Room]bool
 	contactService contacts.I_ContactRepo
+	vicall         *vicall.JSONSignal
 	wg             *sync.WaitGroup
 	disposed       bool
 }
@@ -100,6 +104,7 @@ func ServeWs(wsServer *WsServer, c *gin.Context, contactRepo contacts.I_ContactR
 		utils.Log().Error(err, "error while creating client")
 		return
 	}
+	client.vicall = vicall.NewJSONSignal(sfu.NewPeer(wsServer.ionsfu), utils.Log())
 
 	go client.writeThread()
 	go client.readThread()
@@ -116,10 +121,15 @@ func (me *Client) GetUsername() string {
 	return me.Username
 }
 
+func (me *Client) Send(msg []byte) {
+	me.send <- msg
+}
+
 func (me *Client) readThread() {
-	// defer func() {
-	// 	me.disconnect()
-	// }()
+	defer func() {
+		me.wg.Done()
+		me.disconnect()
+	}()
 
 	me.conn.SetReadLimit(maxMessageSize)
 	me.conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -153,8 +163,6 @@ func (me *Client) readThread() {
 			break
 		}
 	}
-	me.wg.Done()
-	me.disconnect()
 }
 
 func (me *Client) writeThread() {
@@ -200,6 +208,7 @@ func (me *Client) writeThread() {
 
 func (me *Client) disconnect() {
 	utils.Log().Info("disconnect " + me.Username)
+	me.vicall.Close()
 	me.wsServer.unregister <- me
 	for room := range me.rooms {
 		room.unregister <- me
@@ -209,10 +218,17 @@ func (me *Client) disconnect() {
 }
 
 func (me *Client) handleNewMessage(jsonMessage []byte) {
-	var message Message
-	if err := json.Unmarshal(jsonMessage, &message); err != nil {
-		utils.Log().Error(err, ("error on unmarshal JSON message"))
+	utils.Log().V(2).Info("handleNewMessage " + string(jsonMessage))
+	var rpc jsonrpc2.RPCRequest
+	if err := json.Unmarshal(jsonMessage, &rpc); err != nil {
+		utils.Log().Error(err, ("error on unmarshal JSON rpc"))
 		return
+	}
+
+	var message Message
+	if err := json.Unmarshal(rpc.Params, &message); err != nil {
+		utils.Log().Error(err, ("error on unmarshal rpc message"))
+		message = Message{}
 	}
 
 	message.Sender = me
@@ -235,6 +251,9 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 
 	case HasBeenRead:
 		me.handleHasBeenRead(message)
+
+	default:
+		me.vicall.Handle(me.send, &rpc)
 	}
 }
 

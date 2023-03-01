@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/pion/ion-sfu/pkg/sfu"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -23,11 +24,11 @@ type WsServer struct {
 	rooms          map[*Room]bool
 	roomRepository room.I_RoomMember
 	msgRepository  messageDB.I_MessageRepo
-	// userRepository user.UserService
+	ionsfu         *sfu.SFU
 }
 
 // NewWebsocketServer creates a new WsServer type
-func NewWebsocketServer(mongoclient *mongo.Client, ctx context.Context /*, userRepository user.UserService*/) *WsServer {
+func NewWebsocketServer(mongoclient *mongo.Client, ctx context.Context, s *sfu.SFU) *WsServer {
 	collectionRoom := mongoclient.Database("pesatu").Collection("rooms")
 	memberCollection := mongoclient.Database("pesatu").Collection("roommembers")
 
@@ -42,7 +43,7 @@ func NewWebsocketServer(mongoclient *mongo.Client, ctx context.Context /*, userR
 		rooms:          make(map[*Room]bool),
 		roomRepository: room.NewRoomMemberService(collectionRoom, memberCollection, ctx),
 		msgRepository:  messageDB.NewMsgRepository(userCollection, msgCollection, ctx),
-		// userRepository: userRepository,
+		ionsfu:         s,
 	}
 
 	// Add users from database to server
@@ -239,7 +240,6 @@ func (server *WsServer) broadcastToClientsInRoom(client *Client, message *Messag
 	var err error
 	for page == 1 || len(rooms) == 10 {
 		rooms, err = server.roomRepository.FindRoomByMemberID(client.GetUID(), page, 10)
-		utils.Log().V(2).Info(fmt.Sprintf("broadcastToClientsInRoom rooms count : %d", len(rooms)))
 		page = page + 1
 		if err != nil {
 			utils.Log().Error(err, "error while finding rooms by user uid")
