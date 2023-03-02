@@ -23,6 +23,15 @@ func NewJSONSignal(p *sfu.PeerLocal, l logr.Logger) *JSONSignal {
 // Handle incoming RPC call events like join, answer, offer and trickle
 // called from jsonrpc2.Conn object
 func (me *JSONSignal) Handle(send chan []byte, req *jsonrpc2.RPCRequest) {
+	sendMsg := func(msg []byte) {
+		select {
+		case send <- msg:
+			me.Logger.V(2).Info(fmt.Sprintf("vc send rpc msg"))
+		default:
+			//channel closed
+			me.Logger.Error(nil, "vc send msg error, chanel closed")
+		}
+	}
 	replyError := func(err error) {
 		me.Logger.V(2).Info(fmt.Sprintf("ReplyWithError, %s", err))
 		resErr, err := jsonrpc2.ReplyWithError(req.ID, nil, http.StatusBadRequest, err)
@@ -32,7 +41,7 @@ func (me *JSONSignal) Handle(send chan []byte, req *jsonrpc2.RPCRequest) {
 			return
 		}
 
-		send <- resErr.Encode()
+		sendMsg(resErr.Encode())
 	}
 
 	// create a logger that is only enabled for trace messages
@@ -56,7 +65,7 @@ func (me *JSONSignal) Handle(send chan []byte, req *jsonrpc2.RPCRequest) {
 				return
 			}
 
-			send <- rpcReq.Encode()
+			sendMsg(rpcReq.Encode())
 		}
 		me.OnIceCandidate = func(candidate *webrtc.ICECandidateInit, target int) {
 			me.Logger.V(2).Info(fmt.Sprintf("Notify trickle to peer_id: %s, %s", me.ID(), candidate.Candidate))
@@ -69,7 +78,7 @@ func (me *JSONSignal) Handle(send chan []byte, req *jsonrpc2.RPCRequest) {
 				return
 			}
 
-			send <- rpcReq.Encode()
+			sendMsg(rpcReq.Encode())
 		}
 
 		me.OnICEConnectionStateChange = func(s webrtc.ICEConnectionState) {
@@ -93,7 +102,7 @@ func (me *JSONSignal) Handle(send chan []byte, req *jsonrpc2.RPCRequest) {
 		if err != nil {
 			me.Logger.Error(err, "error while answering join")
 		}
-		send <- resRpc.Encode()
+		sendMsg(resRpc.Encode())
 
 	case "offer":
 		var negotiation Negotiation
@@ -115,7 +124,7 @@ func (me *JSONSignal) Handle(send chan []byte, req *jsonrpc2.RPCRequest) {
 		if err != nil {
 			me.Logger.Error(err, "error while answering offer")
 		}
-		send <- resRpc.Encode()
+		sendMsg(resRpc.Encode())
 
 	case "answer":
 		var negotiation Negotiation

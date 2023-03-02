@@ -121,10 +121,6 @@ func (me *Client) GetUsername() string {
 	return me.Username
 }
 
-func (me *Client) Send(msg []byte) {
-	me.send <- msg
-}
-
 func (me *Client) readThread() {
 	defer func() {
 		me.wg.Done()
@@ -233,7 +229,7 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 
 	message.Sender = me
 
-	switch message.Action {
+	switch rpc.Method {
 	case SendMessageAction:
 		me.handleSendMessageAction(message)
 
@@ -315,7 +311,11 @@ func (me *Client) handleGetMessages(message Message) {
 			retMsg.Target.ID = uuid.Nil
 		}
 		utils.Log().V(2).Info(fmt.Sprintf("notify Room Joined, %s is registered in room %s", me.Name, room.Name))
-		me.send <- retMsg.encode()
+		m, err := jsonrpc2.Notify(message.Action, retMsg)
+		if err != nil {
+			utils.Log().Error(err, "error while create jsonrpc2 notify")
+		}
+		me.SendMsg(m.Encode())
 	}
 }
 
@@ -509,15 +509,12 @@ func (me *Client) notifyRoomJoined(room *Room, sender I_User, msg string) {
 		Sender:  sender,
 		Message: msg,
 	}
-	// utils.Log().V(2).Info(fmt.Sprintf("notify Room Joined, %s is registered in room %s", me.Name, room.Name))
-	// me.send <- message.encode()
-	select {
-	case me.send <- message.encode():
-		utils.Log().V(2).Info(fmt.Sprintf("notify Room Joined, %s is registered in room %s", me.Name, room.Name))
-	default:
-		//channel closed
-		utils.Log().Error(nil, "chanel closed")
+
+	m, err := jsonrpc2.Notify(RoomJoinedAction, message)
+	if err != nil {
+		utils.Log().Error(err, "error while create jsonrpc2 notify")
 	}
+	me.SendMsg(m.Encode())
 }
 
 func (me *Client) notifyInfo(room *Room, sender I_User, msg, status, time string) {
@@ -529,5 +526,19 @@ func (me *Client) notifyInfo(room *Room, sender I_User, msg, status, time string
 		Status:  status,
 		Time:    time,
 	}
-	me.send <- message.encode()
+	m, err := jsonrpc2.Notify(Info, message)
+	if err != nil {
+		utils.Log().Error(err, "error while create jsonrpc2 notify")
+	}
+	me.SendMsg(m.Encode())
+}
+
+func (me *Client) SendMsg(msg []byte) {
+	select {
+	case me.send <- msg:
+		utils.Log().V(2).Info(fmt.Sprintf("send rpc msg"))
+	default:
+		//channel closed
+		utils.Log().Error(nil, "send msg error, chanel closed")
+	}
 }

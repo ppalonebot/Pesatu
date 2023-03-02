@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"pesatu/components/messageDB"
 	"pesatu/components/roommember"
+	"pesatu/jsonrpc2"
 	"pesatu/utils"
 	"sync"
 	"time"
@@ -98,14 +99,18 @@ func (r *Room) writeToDBLoop() {
 						utils.Log().Error(err, "error while save messages into database")
 					}
 
-					message := &Messages{
+					message, err := jsonrpc2.Notify(Delivered, &Messages{
 						Action:   Delivered,
 						Target:   r,
 						Messages: res,
+					})
+
+					if err != nil {
+						utils.Log().Error(err, "error while create delv notify msg")
 					}
 
 					utils.Log().V(2).Info("message delivered count: %d", len(res))
-					r.broadcastToClientsInRoom(message.encode())
+					r.broadcastToClientsInRoom(message.Encode())
 				}
 
 				if len(update) > 0 {
