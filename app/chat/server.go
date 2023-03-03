@@ -7,6 +7,7 @@ import (
 	"pesatu/components/messageDB"
 	roommodel "pesatu/components/room"
 	room "pesatu/components/roommember"
+	"pesatu/jsonrpc2"
 	"pesatu/utils"
 
 	"github.com/gin-gonic/gin"
@@ -235,9 +236,14 @@ func (server *WsServer) broadcastToClients(message []byte) {
 }
 
 func (server *WsServer) broadcastToClientsInRoom(client *Client, message *Message) {
+	m, err := jsonrpc2.Notify(message.Action, message)
+	if err != nil {
+		utils.Log().Error(err, "error while broadcast To Clients In Room")
+		return
+	}
+
 	page := 1
 	var rooms []*roommodel.Room
-	var err error
 	for page == 1 || len(rooms) == 10 {
 		rooms, err = server.roomRepository.FindRoomByMemberID(client.GetUID(), page, 10)
 		page = page + 1
@@ -249,7 +255,7 @@ func (server *WsServer) broadcastToClientsInRoom(client *Client, message *Messag
 				if room.GetId() != rooms[r].GetId() {
 					continue
 				}
-				room.broadcastToClientsInRoom(message.encode())
+				room.broadcastToClientsInRoom(m.Encode())
 			}
 		}
 	}

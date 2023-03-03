@@ -201,7 +201,11 @@ func (room *Room) RunRoom() {
 			room.unregisterClientInRoom(client)
 
 		case message := <-room.broadcast:
-			room.broadcastToClientsInRoom(message.encode())
+			m, err := jsonrpc2.Notify(message.Action, message)
+			if err != nil {
+				utils.Log().Error(err, "error while broadcasitng message")
+			}
+			room.broadcastToClientsInRoom(m.Encode())
 
 			//todo next version using redis:
 			//room.publishRoomMessage(message)
@@ -277,14 +281,18 @@ func (room *Room) broadcastToClientsInRoom(message []byte) {
 // }
 
 func (room *Room) notifyClientJoined(client *Client) {
-	message := &Message{
+	message, err := jsonrpc2.Notify(SendMessageAction, &Message{
 		Action:  SendMessageAction,
 		Target:  room,
 		Message: fmt.Sprintf("%s joined room", client.GetUsername()),
+	})
+
+	if err != nil {
+		utils.Log().Error(err, "error while notify client joined")
 	}
 
 	utils.Log().V(2).Info("notify", client.Name, "Joined room", room.Name)
-	room.broadcastToClientsInRoom(message.encode())
+	room.broadcastToClientsInRoom(message.Encode())
 	//todo
 	//room.publishRoomMessage(message.encode())
 }
