@@ -17,7 +17,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/pion/ion-sfu/pkg/sfu"
 )
 
 // Client represents the websocket client at the server
@@ -104,13 +103,13 @@ func ServeWs(wsServer *WsServer, c *gin.Context, contactRepo contacts.I_ContactR
 		utils.Log().Error(err, "error while creating client")
 		return
 	}
-	client.vicall = vicall.NewJSONSignal(sfu.NewPeer(wsServer.ionsfu), utils.Log())
+	client.vicall = vicall.NewJSONSignal(vicall.NewPeer(wsServer.ionsfu), utils.Log())
 
 	go client.writeThread()
 	go client.readThread()
 
 	wsServer.register <- client
-	utils.Log().Info("ServeWs")
+	utils.Log().Info("ServeWs " + user.GetUsername())
 }
 
 func (me *Client) GetUID() string {
@@ -127,7 +126,7 @@ func (me *Client) readThread() {
 		me.disconnect()
 	}()
 
-	me.conn.SetReadLimit(maxMessageSize)
+	// me.conn.SetReadLimit(maxMessageSize)
 	me.conn.SetReadDeadline(time.Now().Add(pongWait))
 	me.conn.SetPongHandler(func(string) error {
 		// keep connection alive
@@ -223,7 +222,7 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 
 	var message Message
 	if err := json.Unmarshal(rpc.Params, &message); err != nil {
-		utils.Log().Error(err, ("error on unmarshal rpc message"))
+		// utils.Log().Error(err, ("error on unmarshal rpc message"))
 		message = Message{}
 	}
 
@@ -249,9 +248,28 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 		me.handleHasBeenRead(message)
 
 	default:
+		// me.handleVicall(&rpc)
 		me.vicall.Handle(me.send, &rpc)
 	}
 }
+
+// func (me *Client) handleVicall(rpc *jsonrpc2.RPCRequest) {
+// 	switch rpc.Method {
+// 	case vicall.StartVicall:
+// 		me.vicall = vicall.NewJSONSignal(sfu.NewPeer(me.wsServer.ionsfu), utils.Log())
+// 		rpcReq, err := jsonrpc2.Notify(vicall.StartVicall, "ok")
+// 		if err != nil {
+// 			utils.Log().Error(err, "error sending start vicall response")
+// 			return
+// 		}
+// 		me.SendMsg(rpcReq.Encode())
+// 	case vicall.JoinVicall:
+// 		me.vicall.Handle(me.send, rpc)
+// 	case vicall.LeaveVicall:
+// 		me.vicall.Handle(me.send, rpc)
+// 		me.vicall = nil
+// 	}
+// }
 
 func (me *Client) handleHasBeenRead(message Message) {
 	roomID := message.Target.GetId()

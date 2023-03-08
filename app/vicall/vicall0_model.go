@@ -1,7 +1,6 @@
 package vicall
 
 import (
-	"github.com/pion/ion-sfu/pkg/sfu"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -10,7 +9,7 @@ type Join struct {
 	SID    string                    `json:"sid"`
 	UID    string                    `json:"uid"`
 	Offer  webrtc.SessionDescription `json:"offer"`
-	Config sfu.JoinConfig            `json:"config"`
+	Config JoinConfig                `json:"config"`
 }
 
 // Negotiation message sent when renegotiating the peer connection
@@ -23,3 +22,11 @@ type Trickle struct {
 	Target    int                     `json:"target"`
 	Candidate webrtc.ICECandidateInit `json:"candidate"`
 }
+
+type VAction = string
+
+const (
+	StartVicall VAction = "start-vicall"
+	JoinVicall  VAction = "join"
+	LeaveVicall VAction = "leave-vicall"
+)
