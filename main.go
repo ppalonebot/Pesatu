@@ -48,6 +48,7 @@ var (
 	conf           = sfu.Config{}
 	file           string
 	portRangeLimit uint16
+	devcors        string
 )
 
 func showHelp() {
@@ -164,6 +165,12 @@ func readEnv() {
 		utils.Log().V(2).Info("webRTC port range limit: " + strPortRangeLimit)
 		portRangeLimit = utils.StringToUint16(strPortRangeLimit, 100)
 	}
+
+	cors := os.Getenv("Cors")
+	if len(cors) > 0 {
+		devcors = cors
+	}
+
 }
 
 func main() {
@@ -213,9 +220,16 @@ func main() {
 	limiter := ratelimit.NewBucketWithRate(100, 100)
 
 	if DevMode > 0 {
-		// Enable CORS with the withCredentials option
+		allowOrigin := []string{"http://localhost:3000"}
+		if len(devcors) > 0 {
+			a, err := utils.ConvertToArray(devcors)
+			if err == nil {
+				allowOrigin = a
+				utils.Log().V(2).Info("Cors list: " + devcors)
+			}
+		}
 		server.Use(cors.New(cors.Config{
-			AllowOrigins:     []string{"http://localhost:3000"},
+			AllowOrigins:     allowOrigin,
 			AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
 			AllowHeaders:     []string{"Content-Type", "Authorization", "credentials", "Origin"},
 			ExposeHeaders:    []string{"Content-Length"},
@@ -258,7 +272,7 @@ func main() {
 	RMRouteController.InitRouteTo(server)
 
 	//app:
-	
+
 	if !loadViCallConfig() {
 		wsServer := chat.NewWebsocketServer(mongoclient, ctx, nil)
 		wsServer.InitRouteTo(server, ContactRouteController.GetContactService(), DevMode)

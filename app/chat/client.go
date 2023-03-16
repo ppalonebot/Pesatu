@@ -87,7 +87,7 @@ func ServeWs(wsServer *WsServer, c *gin.Context, contactRepo contacts.I_ContactR
 	if devmode > 0 {
 		upgrader.CheckOrigin = func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
-			return origin == "http://localhost:3000"
+			return strings.HasPrefix(origin, "http://192.168.") || strings.HasPrefix(origin, "http://localhost") //||origin == "http://localhost:3000"
 			// return true
 		}
 	}
@@ -182,7 +182,7 @@ func (me *Client) writeThread() {
 			}
 			w.Write(message)
 
-			// Attach queued chat messages to the current websocket message.
+			//Attach queued chat messages to the current websocket message.
 			n := len(me.send)
 			for i := 0; i < n; i++ {
 				w.Write(newline)
@@ -248,28 +248,55 @@ func (me *Client) handleNewMessage(jsonMessage []byte) {
 		me.handleHasBeenRead(message)
 
 	default:
-		// me.handleVicall(&rpc)
-		me.vicall.Handle(me.send, &rpc)
+		me.handleVicall(&rpc)
+		// me.vicall.Handle(me.send, &rpc)
 	}
 }
 
-// func (me *Client) handleVicall(rpc *jsonrpc2.RPCRequest) {
-// 	switch rpc.Method {
-// 	case vicall.StartVicall:
-// 		me.vicall = vicall.NewJSONSignal(sfu.NewPeer(me.wsServer.ionsfu), utils.Log())
-// 		rpcReq, err := jsonrpc2.Notify(vicall.StartVicall, "ok")
-// 		if err != nil {
-// 			utils.Log().Error(err, "error sending start vicall response")
-// 			return
-// 		}
-// 		me.SendMsg(rpcReq.Encode())
-// 	case vicall.JoinVicall:
-// 		me.vicall.Handle(me.send, rpc)
-// 	case vicall.LeaveVicall:
-// 		me.vicall.Handle(me.send, rpc)
-// 		me.vicall = nil
-// 	}
-// }
+func (me *Client) handleVicall(rpc *jsonrpc2.RPCRequest) {
+	switch rpc.Method {
+	case vicall.JoinVicall:
+		replyError := func(err error) {
+			utils.Log().V(2).Info(fmt.Sprintf("ReplyWithError, %s", err))
+			resErr, err := jsonrpc2.ReplyWithError(rpc.ID, nil, http.StatusBadRequest, err)
+
+			if err != nil {
+				utils.Log().Error(err, "error while sending reply with error")
+				return
+			}
+
+			me.SendMsg(resErr.Encode())
+		}
+
+		var join vicall.Join
+		err := json.Unmarshal(rpc.Params, &join)
+		if err != nil {
+			replyError(err)
+			return
+		}
+
+		ok := utils.IsValidUid(join.SID)
+		if !ok {
+			replyError(fmt.Errorf("error, invalid room id %s", join.SID))
+			return
+		}
+
+		if me.Username != join.UID {
+			replyError(fmt.Errorf("error, uid didn't match with current user %s", join.UID))
+			return
+		}
+
+		room := me.wsServer.findRoomByID(join.SID)
+		if room == nil {
+			replyError(fmt.Errorf("error, can't find room id %s", join.SID))
+			return
+		}
+
+		me.vicall.Handle(me.send, rpc)
+	default:
+		me.vicall.Handle(me.send, rpc)
+	}
+}
 
 func (me *Client) handleHasBeenRead(message Message) {
 	roomID := message.Target.GetId()

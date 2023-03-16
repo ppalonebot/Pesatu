@@ -26,7 +26,6 @@ type Trickle struct {
 type VAction = string
 
 const (
-	StartVicall VAction = "start-vicall"
 	JoinVicall  VAction = "join"
 	LeaveVicall VAction = "leave-vicall"
 )

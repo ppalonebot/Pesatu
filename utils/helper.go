@@ -37,6 +37,15 @@ func JoinAndSort(a, b string, delimiter string) string {
 	return s[0] + delimiter + s[1]
 }
 
+func ConvertToArray(s string) ([]string, error) {
+	var array []string
+	err := json.Unmarshal([]byte(s), &array)
+	if err != nil {
+		return nil, err
+	}
+	return array, nil
+}
+
 func GenerateRandomNumber() string {
 	rand.Seed(time.Now().UnixNano())
 	// Generate a random number between 100000 and 999999

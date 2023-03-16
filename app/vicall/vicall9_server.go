@@ -161,9 +161,9 @@ func (me *JSONSignal) Handle(send chan []byte, req *jsonrpc2.RPCRequest) {
 		if err != nil {
 			replyError(err)
 		} else {
-			me.V(2).Info(fmt.Sprintf("sending %s", string(jsonBytes)))
 			for _, peer := range peers {
 				if peer.ID() != me.ID() {
+					me.V(2).Info(fmt.Sprintf("sending dmessage to %s", peer.ID()))
 					peer.SendDCMessage(sfu.APIChannelLabel, jsonBytes)
 				}
 			}
@@ -173,11 +173,15 @@ func (me *JSONSignal) Handle(send chan []byte, req *jsonrpc2.RPCRequest) {
 		if me.closed.get() {
 			return
 		}
-		me.Info(fmt.Sprintf("%s leaving %s", me.ID(), me.Session().ID()))
+
+		if me.session != nil {
+			me.Info(fmt.Sprintf("%s leaving %s", me.ID(), me.Session().ID()))
+			me.V(2).Info(fmt.Sprintf("len of peers %d", len(me.Session().Peers())))
+		}
+
 		err := me.Close()
 		if err != nil {
 			replyError(err)
 		}
-		me.V(2).Info(fmt.Sprintf("len of peers %d", len(me.Session().Peers())))
 	}
 }
