@@ -292,6 +292,12 @@ func (me *Client) handleVicall(rpc *jsonrpc2.RPCRequest) {
 			return
 		}
 
+		ok = room.CheckMemberID(me.GetUID())
+		if !ok {
+			replyError(fmt.Errorf("error, client rejected"))
+			return
+		}
+
 		me.vicall.Handle(me.send, rpc)
 	default:
 		me.vicall.Handle(me.send, rpc)
