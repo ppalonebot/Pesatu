@@ -35,7 +35,7 @@ func NewUploadImageRoute(mongoclient *mongo.Client, ctx context.Context, l logr.
 	return UploadImageRoute{controller, limiter, ctx}
 }
 
-func (me *UploadImageRoute) InitRouteTo(rg *gin.Engine) {
+func (me *UploadImageRoute) InitRouteTo(rg *gin.RouterGroup) {
 	router := rg.Group("/image")
 	router.POST("/upload", me.RateLimit, me.controller.ImageUploadHandler)
 	router.GET("/:id", me.RateLimit, me.controller.GetImageHandler)

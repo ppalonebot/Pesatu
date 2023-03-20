@@ -32,7 +32,7 @@ func NewProfileRoute(mongoclient *mongo.Client, ctx context.Context, l logr.Logg
 	return ProfileRoute{controller, limiter}
 }
 
-func (me *ProfileRoute) InitRouteTo(rg *gin.Engine) {
+func (me *ProfileRoute) InitRouteTo(rg *gin.RouterGroup) {
 	router := rg.Group("/prf")
 	router.POST("/rpc", me.RateLimit, me.RPCHandle)
 }

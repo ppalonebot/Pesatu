@@ -32,7 +32,7 @@ func NewContactRoute(mongoclient *mongo.Client, ctx context.Context, l logr.Logg
 	return ContactRoute{contactController, limiter}
 }
 
-func (me *ContactRoute) InitRouteTo(rg *gin.Engine) {
+func (me *ContactRoute) InitRouteTo(rg *gin.RouterGroup) {
 	router := rg.Group("/contacts")
 	router.POST("/rpc", me.RateLimit, me.RPCHandle)
 }

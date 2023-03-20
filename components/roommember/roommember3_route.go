@@ -27,7 +27,7 @@ func NewRoomMemberRoute(mongoclient *mongo.Client, ctx context.Context, limiter 
 	return RoomMemberRoute{controller, limiter}
 }
 
-func (me *RoomMemberRoute) InitRouteTo(rg *gin.Engine) {
+func (me *RoomMemberRoute) InitRouteTo(rg *gin.RouterGroup) {
 	router := rg.Group("/rm")
 	router.POST("/rpc", me.RateLimit, me.RPCHandle)
 }

@@ -5,8 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
-	"net/url"
 	"os"
 	"pesatu/app/chat"
 	"pesatu/auth"
@@ -49,6 +47,8 @@ var (
 	file           string
 	portRangeLimit uint16
 	devcors        string
+	certFile       string
+	privkey        string
 )
 
 func showHelp() {
@@ -171,6 +171,9 @@ func readEnv() {
 		devcors = cors
 	}
 
+	certFile = os.Getenv("CertFile")
+	privkey = os.Getenv("KeyFile")
+
 }
 
 func main() {
@@ -215,8 +218,8 @@ func main() {
 
 	logger.Info("MongoDB successfully connected...")
 
-	server = gin.Default()
-	server.SetTrustedProxies(nil)
+	s := gin.Default()
+	s.SetTrustedProxies(nil)
 	limiter := ratelimit.NewBucketWithRate(100, 100)
 
 	if DevMode > 0 {
@@ -228,7 +231,7 @@ func main() {
 				utils.Log().V(2).Info("Cors list: " + devcors)
 			}
 		}
-		server.Use(cors.New(cors.Config{
+		s.Use(cors.New(cors.Config{
 			AllowOrigins:     allowOrigin,
 			AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
 			AllowHeaders:     []string{"Content-Type", "Authorization", "credentials", "Origin"},
@@ -238,16 +241,18 @@ func main() {
 		}))
 	}
 
-	server.GET("/", func(c *gin.Context) {
-		if limiter.TakeAvailable(1) == 0 {
-			c.AbortWithStatus(http.StatusTooManyRequests)
-			return
-		}
+	server := s.Group("/api")
 
-		c.Redirect(http.StatusMovedPermanently, "/app/")
-	})
-	server.Static("/static", "./public/static")
-	server.Static("/app", "./public")
+	// server.GET("/", func(c *gin.Context) {
+	// 	if limiter.TakeAvailable(1) == 0 {
+	// 		c.AbortWithStatus(http.StatusTooManyRequests)
+	// 		return
+	// 	}
+
+	// 	c.Redirect(http.StatusMovedPermanently, "/app/")
+	// })
+	// server.Static("/static", "./public/static")
+	// server.Static("/app", "./public")
 
 	server.Use(auth.AuthMiddleware())
 
@@ -290,43 +295,47 @@ func main() {
 	}
 
 	// Use the redirectToAppMiddleware middleware to wrap the handler
-	server.Use(redirectToAppMiddleware())
+	//server.Use(redirectToAppMiddleware())
 
-	server.Run(Addr)
-}
-
-func redirectToAppMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-
-		u, err := url.Parse(c.Request.URL.String())
-		if err != nil {
-			logger.Error(err, "redirecting errror")
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-
-		// Get the path and query parameters from the original request
-		path := u.Path
-		if strings.Contains(path, ":") {
-			logger.Error(fmt.Errorf("path unsupported %s", path), "redirecting errror")
-			c.AbortWithStatus(http.StatusNotFound)
-			return
-		}
-
-		path = strings.TrimPrefix(path, "/")
-
-		params := c.Request.URL.Query()
-		queryString := params.Encode()
-		if queryString != "" {
-			queryString = "?" + queryString
-		}
-
-		// Construct the target URL using "/app/#" so it can be handled using FE
-		targetURL := "/app/#" + path + queryString
-		// Redirect to the target URL
-		c.Redirect(http.StatusMovedPermanently, targetURL)
+	// Serve over HTTPS with SSL certificate and private key files
+	err = s.RunTLS(Addr, certFile, privkey)
+	if err != nil {
+		s.Run(Addr)
 	}
 }
+
+// func redirectToAppMiddleware() gin.HandlerFunc {
+// 	return func(c *gin.Context) {
+
+// 		u, err := url.Parse(c.Request.URL.String())
+// 		if err != nil {
+// 			logger.Error(err, "redirecting errror")
+// 			c.AbortWithStatus(http.StatusNotFound)
+// 			return
+// 		}
+
+// 		// Get the path and query parameters from the original request
+// 		path := u.Path
+// 		if strings.Contains(path, ":") {
+// 			logger.Error(fmt.Errorf("path unsupported %s", path), "redirecting errror")
+// 			c.AbortWithStatus(http.StatusNotFound)
+// 			return
+// 		}
+
+// 		path = strings.TrimPrefix(path, "/")
+
+// 		params := c.Request.URL.Query()
+// 		queryString := params.Encode()
+// 		if queryString != "" {
+// 			queryString = "?" + queryString
+// 		}
+
+// 		// Construct the target URL using "/app/#" so it can be handled using FE
+// 		targetURL := "/app/#" + path + queryString
+// 		// Redirect to the target URL
+// 		c.Redirect(http.StatusMovedPermanently, targetURL)
+// 	}
+// }
 
 func DelayMiddleware(duration time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {

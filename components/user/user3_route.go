@@ -66,7 +66,7 @@ func CheckAllowCredentials(ctx *gin.Context, res *ResponseUser, code int) *Respo
 	return res
 }
 
-func (me *UserRoute) InitRouteTo(rg *gin.Engine) {
+func (me *UserRoute) InitRouteTo(rg *gin.RouterGroup) {
 	router := rg.Group("/usr")
 	router.POST("/rpc", me.RateLimit, me.RPCHandle)
 	router.GET("/resetpwd", me.RateLimit, me.ResetPwdHandler)
