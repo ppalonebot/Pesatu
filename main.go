@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"pesatu/app/chat"
 	"pesatu/auth"
@@ -49,6 +50,7 @@ var (
 	devcors        string
 	certFile       string
 	privkey        string
+	mongosh        string
 )
 
 func showHelp() {
@@ -173,6 +175,7 @@ func readEnv() {
 
 	certFile = os.Getenv("CertFile")
 	privkey = os.Getenv("KeyFile")
+	mongosh = os.Getenv("Mongosh")
 
 }
 
@@ -200,7 +203,7 @@ func main() {
 	// defer cancel()
 
 	// Connect to MongoDB
-	mongoconn := options.Client().ApplyURI("mongodb://root:example@mongo:27017")
+	mongoconn := options.Client().ApplyURI(mongosh)
 	mongoclient, err := mongo.NewClient(mongoconn)
 	if err != nil {
 		panic(err)
@@ -242,6 +245,15 @@ func main() {
 	}
 
 	server := s.Group("/api")
+
+	server.GET("/", func(c *gin.Context) {
+		if limiter.TakeAvailable(1) == 0 {
+			c.AbortWithStatus(http.StatusTooManyRequests)
+			return
+		}
+
+		c.String(http.StatusOK, "Hello Penyatu World!")
+	})
 
 	// server.GET("/", func(c *gin.Context) {
 	// 	if limiter.TakeAvailable(1) == 0 {
