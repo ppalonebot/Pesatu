@@ -35,14 +35,12 @@ type logC struct {
 }
 
 var (
-	server         *gin.Engine
 	ctx            context.Context
 	Addr           string
 	DevMode        int
 	verbosityLevel int
 	logConfig      logC
 	logger         = log.New()
-	limiter        *ratelimit.Bucket
 	Env            string
 	conf           = sfu.Config{}
 	file           string
@@ -252,7 +250,7 @@ func main() {
 			return
 		}
 
-		c.String(http.StatusOK, "Hello Penyatu World!")
+		c.String(http.StatusOK, "Hello World! The API works!")
 	})
 
 	// server.GET("/", func(c *gin.Context) {
