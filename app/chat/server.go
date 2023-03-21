@@ -52,9 +52,9 @@ func NewWebsocketServer(mongoclient *mongo.Client, ctx context.Context, s *sfu.S
 	return wsServer
 }
 
-func (server *WsServer) InitRouteTo(rg *gin.RouterGroup, contactRepo contacts.I_ContactRepo, devmode int) {
+func (server *WsServer) InitRouteTo(rg *gin.RouterGroup, contactRepo contacts.I_ContactRepo, allowOrigins []string) {
 	rg.GET("/ws", func(c *gin.Context) {
-		ServeWs(server, c, contactRepo, devmode)
+		ServeWs(server, c, contactRepo, allowOrigins)
 	})
 }
 

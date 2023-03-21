@@ -66,7 +66,7 @@ func newClient(conn *websocket.Conn, wsServer *WsServer, username string, ID str
 }
 
 // ServeWs handles websocket requests from clients requests.
-func ServeWs(wsServer *WsServer, c *gin.Context, contactRepo contacts.I_ContactRepo, devmode int) {
+func ServeWs(wsServer *WsServer, c *gin.Context, contactRepo contacts.I_ContactRepo, allowOrigins []string) {
 	userCtxValue, ok := c.Get("validuser")
 	if !ok {
 		utils.Log().Info("Not authenticated")
@@ -84,12 +84,9 @@ func ServeWs(wsServer *WsServer, c *gin.Context, contactRepo contacts.I_ContactR
 		WriteBufferSize: 1024,
 	}
 
-	if devmode > 0 {
-		upgrader.CheckOrigin = func(r *http.Request) bool {
-			origin := r.Header.Get("Origin")
-			return strings.HasPrefix(origin, "http://192.168.") || strings.HasPrefix(origin, "http://localhost") //||origin == "http://localhost:3000"
-			// return true
-		}
+	upgrader.CheckOrigin = func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		return utils.StringInSlice(origin, allowOrigins)
 	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)

@@ -219,39 +219,43 @@ func main() {
 
 	logger.Info("MongoDB successfully connected...")
 
+	if DevMode == 0 {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
 	s := gin.Default()
 	s.SetTrustedProxies(nil)
 	limiter := ratelimit.NewBucketWithRate(100, 100)
 
-	if DevMode > 0 {
-		allowOrigin := []string{"http://localhost:3000"}
-		if len(devcors) > 0 {
-			a, err := utils.ConvertToArray(devcors)
-			if err == nil {
-				allowOrigin = a
-				utils.Log().V(2).Info("Cors list: " + devcors)
-			}
+	allowOrigin := []string{"http://localhost:3000"}
+	if len(devcors) > 0 {
+		a, err := utils.ConvertToArray(devcors)
+		if err == nil {
+			allowOrigin = a
+			utils.Log().V(2).Info("Cors list: " + devcors)
 		}
-		s.Use(cors.New(cors.Config{
-			AllowOrigins:     allowOrigin,
-			AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
-			AllowHeaders:     []string{"Content-Type", "Authorization", "credentials", "Origin"},
-			ExposeHeaders:    []string{"Content-Length"},
-			AllowWebSockets:  true,
-			AllowCredentials: true,
-		}))
 	}
+	s.Use(cors.New(cors.Config{
+		AllowOrigins:     allowOrigin,
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
+		AllowHeaders:     []string{"Content-Type", "Authorization", "credentials", "Origin"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowWebSockets:  true,
+		AllowCredentials: true,
+	}))
 
 	server := s.Group("/api")
 
-	server.GET("/", func(c *gin.Context) {
-		if limiter.TakeAvailable(1) == 0 {
-			c.AbortWithStatus(http.StatusTooManyRequests)
-			return
-		}
+	if DevMode > 0 {
+		server.GET("/", func(c *gin.Context) {
+			if limiter.TakeAvailable(1) == 0 {
+				c.AbortWithStatus(http.StatusTooManyRequests)
+				return
+			}
 
-		c.String(http.StatusOK, "Hello World! The API works!")
-	})
+			c.String(http.StatusOK, "Hello World! The API works!")
+		})
+	}
 
 	// server.GET("/", func(c *gin.Context) {
 	// 	if limiter.TakeAvailable(1) == 0 {
@@ -290,7 +294,7 @@ func main() {
 
 	if !loadViCallConfig() {
 		wsServer := chat.NewWebsocketServer(mongoclient, ctx, nil)
-		wsServer.InitRouteTo(server, ContactRouteController.GetContactService(), DevMode)
+		wsServer.InitRouteTo(server, ContactRouteController.GetContactService(), allowOrigin)
 		go wsServer.Run()
 	} else {
 		// Pass logr instance
@@ -300,7 +304,7 @@ func main() {
 		dc.Use(datachannel.SubscriberAPI)
 
 		wsServer := chat.NewWebsocketServer(mongoclient, ctx, s)
-		wsServer.InitRouteTo(server, ContactRouteController.GetContactService(), DevMode)
+		wsServer.InitRouteTo(server, ContactRouteController.GetContactService(), allowOrigin)
 		go wsServer.Run()
 	}
 
