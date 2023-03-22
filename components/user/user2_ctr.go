@@ -77,7 +77,7 @@ func (me *UserController) Register(regUser *CreateUserRequest) (*ResponseUser, *
 		}, http.StatusOK
 	}
 
-	password, _ := auth.GeneratePassword("password")
+	password, _ := auth.GeneratePassword(regUser.Password)
 	nu := &CreateUser{
 		UID:      uuid.New().String(),
 		Name:     regUser.Name,

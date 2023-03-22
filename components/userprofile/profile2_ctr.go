@@ -211,7 +211,7 @@ func (me *ProfileController) FindMyProfile(validuser *auth.Claims, owner string)
 
 	profile, err := me.profileService.FindProfileByOwner(owner)
 	if err != nil {
-		if strings.Contains(err.Error(), "exists") {
+		if strings.Contains(err.Error(), "exist") {
 			//return nil, &jsonrpc2.RPCError{Code: http.StatusNotFound, Message: err.Error()}, http.StatusOK
 			profile = &DBProfile{}
 		} else {
