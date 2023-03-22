@@ -19,7 +19,7 @@ type I_ProfileRepo interface {
 	FindProfileByOwner(owner string) (*DBProfile, error)
 	FindProfiles(page int, limit int) ([]*DBProfile, error)
 	DeleteProfile(obId primitive.ObjectID) error
-	SeeOtherProfile(uidOwner, toUsername string) (*ResponseSeeOther,error)
+	SeeOtherProfile(uidOwner, toUsername string) (*ResponseSeeOther, error)
 }
 
 type ProfileService struct {
@@ -166,8 +166,8 @@ func (me *ProfileService) SeeOtherProfile(uidOwner, toUsername string) (*Respons
 		{"$match": bson.M{"username": bson.M{"$eq": toUsername}}},
 		{"$lookup": bson.M{
 			"from":         "profiles",
-			"localField":   "owner",
-			"foreignField": "uid",
+			"localField":   "uid",
+			"foreignField": "owner",
 			"as":           "profile",
 		}},
 		{"$lookup": bson.M{
