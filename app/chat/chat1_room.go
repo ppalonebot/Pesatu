@@ -244,7 +244,8 @@ func (room *Room) unregisterClientInRoom(client *Client) {
 func (room *Room) broadcastToClientsInRoom(message []byte) {
 	for client := range room.clients {
 		utils.Log().V(2).Info(fmt.Sprintf("\tBroadcast []byte : %s", client.Name))
-		client.send <- message
+		// client.send <- message
+		client.SendMsg(message)
 	}
 
 	if len(room.clients) <= 0 {

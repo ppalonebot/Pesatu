@@ -223,7 +223,8 @@ func (server *WsServer) listOnlineClients(client *Client) {
 			}
 			utils.Log().V(2).Info(fmt.Sprintf("Tell %s existing User Joined %s id:%s", client.Name, user.GetUsername(), user.GetUID()))
 			uniqueUsers[user.GetUID()] = true
-			client.send <- message.encode()
+			// client.send <- message.encode()
+			client.SendMsg(message.encode())
 		}
 	}
 }
@@ -231,7 +232,8 @@ func (server *WsServer) listOnlineClients(client *Client) {
 func (server *WsServer) broadcastToClients(message []byte) {
 	for client := range server.clients {
 		utils.Log().V(2).Info(fmt.Sprintf("\tBroadcast []byte :%s @ %s", client.Name, client.conn.RemoteAddr().String()))
-		client.send <- message
+		// client.send <- message
+		client.SendMsg(message)
 	}
 }
 

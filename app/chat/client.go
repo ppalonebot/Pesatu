@@ -584,7 +584,7 @@ func (me *Client) notifyInfo(room *Room, sender I_User, msg, status, time string
 func (me *Client) SendMsg(msg []byte) {
 	select {
 	case me.send <- msg:
-		utils.Log().V(2).Info(fmt.Sprintf("send rpc msg"))
+		utils.Log().V(2).Info(fmt.Sprintf("send msg"))
 	default:
 		//channel closed
 		utils.Log().Error(nil, "send msg error, chanel closed")
