@@ -10,11 +10,12 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
-const CONFIG_SMTP_HOST = "smtp.gmail.com"
-const CONFIG_SMTP_PORT = 587
-const CONFIG_SENDER_NAME = "PESATU DEVELOPER <developerroyyan@gmail.com>"
-const CONFIG_AUTH_EMAIL = "developerroyyan@gmail.com"
+var CONFIG_SMTP_HOST = "smtp.gmail.com"
+var CONFIG_SMTP_PORT = 587
+var CONFIG_SENDER_NAME = "PENYATU <developerroyyan@gmail.com>"
+var CONFIG_AUTH_EMAIL = "developerroyyan@gmail.com"
 
+// if using gmail account:
 // vist Google account
 // enable 2-step Verification
 // follow instruction
@@ -25,7 +26,15 @@ const CONFIG_AUTH_EMAIL = "developerroyyan@gmail.com"
 // choose cutom
 // input appname then Generate
 // copy password bellow, and done
-const CONFIG_AUTH_PASSWORD = "hnpsifhwswjntvsd"
+var CONFIG_AUTH_PASSWORD = "hnpsifhwswjntvsd"
+
+func SetConfigSMTP(host, senderName, email, password string, port int) {
+	CONFIG_SMTP_HOST = host
+	CONFIG_SMTP_PORT = port
+	CONFIG_SENDER_NAME = senderName
+	CONFIG_AUTH_EMAIL = email
+	CONFIG_AUTH_PASSWORD = password
+}
 
 func SendMail(to []string, cc []string, subject, message string) error {
 	body := "From: " + CONFIG_SENDER_NAME + "\n" +
@@ -48,25 +57,6 @@ func SendMail(to []string, cc []string, subject, message string) error {
 func SendHtmlMail(to string, subject string, data any, template_thtml string) error {
 	// Read the HTML template file into a variable
 	var body bytes.Buffer
-	// templateData, err := template.ParseFiles(fmt.Sprintf("../template/%s", template_thtml))
-	// if err != nil {
-	// 	// Get the current working directory
-	// 	wd, err := os.Getwd()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	// Get the absolute path of the current file
-	// 	absPath, err := filepath.Abs(wd)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	templateData, err = template.ParseFiles(fmt.Sprintf("%s/template/%s", absPath, template_thtml))
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// }
 	templateData, err := utils.GetTemplateData(template_thtml)
 
 	err = templateData.Execute(&body, data)

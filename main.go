@@ -175,6 +175,14 @@ func readEnv() {
 	privkey = os.Getenv("KeyFile")
 	mongosh = os.Getenv("Mongosh")
 
+	host := os.Getenv("SMTP_HOST")
+	if len(host) > 0 {
+		port := os.Getenv("SMTP_PORT")
+		senderName := os.Getenv("SMTP_SENDER_NAME")
+		email := os.Getenv("SMTP_AUTH_EMAIL")
+		password := os.Getenv("SMTP_AUTH_PWD")
+		auth.SetConfigSMTP(host, senderName, email, password, int(utils.StringToUint16(port, 587)))
+	}
 }
 
 func main() {

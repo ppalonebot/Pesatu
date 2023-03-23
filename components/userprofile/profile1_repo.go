@@ -162,6 +162,48 @@ func (p *ProfileService) DeleteProfile(obId primitive.ObjectID) error {
 }
 
 func (me *ProfileService) SeeOtherProfile(uidOwner, toUsername string) (*ResponseSeeOther, error) {
+	// pipeline := []bson.M{
+	// 	{"$match": bson.M{"username": bson.M{"$eq": toUsername}}},
+	// 	{"$lookup": bson.M{
+	// 		"from":         "profiles",
+	// 		"localField":   "uid",
+	// 		"foreignField": "owner",
+	// 		"as":           "profile",
+	// 	}},
+	// 	{"$lookup": bson.M{
+	// 		"from": "contact",
+	// 		"let":  bson.M{"userUID": "$uid"},
+	// 		"pipeline": []bson.M{
+	// 			{"$match": bson.M{"$expr": bson.M{
+	// 				"$and": []bson.M{
+	// 					{"$eq": []interface{}{"$owner", "$$userUID"}},
+	// 					{"$eq": []interface{}{"$to", uidOwner}},
+	// 				},
+	// 			}}},
+	// 		},
+	// 		"as": "temp_contact",
+	// 	}},
+	// 	{"$addFields": bson.M{
+	// 		"contact": bson.M{"$arrayElemAt": []interface{}{"$temp_contact", 0}},
+	// 	}},
+	// 	{"$project": bson.M{
+	// 		"temp_contact": 0,
+	// 	}},
+	// 	{"$unwind": "$profile"},
+	// 	{"$project": bson.M{
+	// 		"_id":        0,
+	// 		"name":       "$name",
+	// 		"username":   "$username",
+	// 		"email":      "$email",
+	// 		"status":     "$profile.status",
+	// 		"bio":        "$profile.bio",
+	// 		"avatar":     "$avatar",
+	// 		"created_at": "$created_at",
+	// 		"updated_at": "$updated_at",
+	// 		"contact":    "$contact",
+	// 	}},
+	// 	{"$limit": 1},
+	// }
 	pipeline := []bson.M{
 		{"$match": bson.M{"username": bson.M{"$eq": toUsername}}},
 		{"$lookup": bson.M{
@@ -189,14 +231,29 @@ func (me *ProfileService) SeeOtherProfile(uidOwner, toUsername string) (*Respons
 		{"$project": bson.M{
 			"temp_contact": 0,
 		}},
-		{"$unwind": "$profile"},
+		{"$unwind": bson.M{
+			"path":                       "$profile",
+			"preserveNullAndEmptyArrays": true,
+		}},
 		{"$project": bson.M{
-			"_id":        0,
-			"name":       "$name",
-			"username":   "$username",
-			"email":      "$email",
-			"status":     "$profile.status",
-			"bio":        "$profile.bio",
+			"_id":      0,
+			"name":     "$name",
+			"username": "$username",
+			"email":    "$email",
+			"status": bson.M{
+				"$cond": []interface{}{
+					bson.M{"$eq": []interface{}{"$profile", []interface{}{}}},
+					"",
+					"$profile.status",
+				},
+			},
+			"bio": bson.M{
+				"$cond": []interface{}{
+					bson.M{"$eq": []interface{}{"$profile", []interface{}{}}},
+					"",
+					"$profile.bio",
+				},
+			},
 			"avatar":     "$avatar",
 			"created_at": "$created_at",
 			"updated_at": "$updated_at",
@@ -227,6 +284,7 @@ func (me *ProfileService) SeeOtherProfile(uidOwner, toUsername string) (*Respons
 	}
 
 	if len(result) == 0 {
+
 		return nil, fmt.Errorf("doesn't exist")
 	}
 
