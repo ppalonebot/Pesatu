@@ -152,7 +152,7 @@ func (p *PeerLocal) Join(sid, uid string, config ...JoinConfig) error {
 
 			p.remoteAnswerPending = true
 			if p.OnOffer != nil && !p.closed.get() {
-				utils.Log().V(0).Info("Send offer", "peer_id", p.id)
+				utils.Log().V(1).Info("Send offer", "peer_id", p.id)
 				p.OnOffer(&offer)
 			}
 		})
@@ -204,7 +204,7 @@ func (p *PeerLocal) Join(sid, uid string, config ...JoinConfig) error {
 
 	p.session.AddPeer(p)
 
-	utils.Log().V(0).Info("PeerLocal join SessionLocal", "peer_id", p.id, "session_id", sid)
+	utils.Log().V(1).Info("PeerLocal join SessionLocal", "peer_id", p.id, "session_id", sid)
 
 	if !conf.NoSubscribe {
 		p.session.Subscribe(p)
@@ -218,7 +218,7 @@ func (p *PeerLocal) Answer(sdp webrtc.SessionDescription) (*webrtc.SessionDescri
 		return nil, ErrNoTransportEstablished
 	}
 
-	utils.Log().V(0).Info("PeerLocal got offer", "peer_id", p.id)
+	utils.Log().V(1).Info("PeerLocal got offer", "peer_id", p.id)
 
 	if p.publisher.SignalingState() != webrtc.SignalingStateStable {
 		return nil, ErrOfferIgnored
@@ -229,7 +229,7 @@ func (p *PeerLocal) Answer(sdp webrtc.SessionDescription) (*webrtc.SessionDescri
 		return nil, fmt.Errorf("error creating answer: %v", err)
 	}
 
-	utils.Log().V(0).Info("PeerLocal send answer", "peer_id", p.id)
+	utils.Log().V(1).Info("PeerLocal send answer", "peer_id", p.id)
 
 	return &answer, nil
 }
@@ -242,7 +242,7 @@ func (p *PeerLocal) SetRemoteDescription(sdp webrtc.SessionDescription) error {
 	p.Lock()
 	defer p.Unlock()
 
-	utils.Log().V(0).Info("PeerLocal got answer", "peer_id", p.id)
+	utils.Log().V(1).Info("PeerLocal got answer", "peer_id", p.id)
 	if err := p.subscriber.SetRemoteDescription(sdp); err != nil {
 		return fmt.Errorf("setting remote description: %w", err)
 	}
@@ -262,7 +262,7 @@ func (p *PeerLocal) Trickle(candidate webrtc.ICECandidateInit, target int) error
 	if p.subscriber == nil || p.publisher == nil {
 		return ErrNoTransportEstablished
 	}
-	utils.Log().V(0).Info("PeerLocal trickle", "peer_id", p.id)
+	utils.Log().V(1).Info("PeerLocal trickle", "peer_id", p.id)
 	switch target {
 	case publisher:
 		if err := p.publisher.AddICECandidate(candidate); err != nil {
