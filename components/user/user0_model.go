@@ -43,6 +43,16 @@ type Registration struct {
 	SendCodeAt time.Time `json:"sendcode_at,omitepty" bson:"sendcode_at,omitempty"`
 }
 
+type EmailRegistration struct {
+	User string `json:"user" bson:"user"`
+	Code string `json:"code" bson:"code"`
+}
+
+type EmailPwdResetRequest struct {
+	User string `json:"user" bson:"user"`
+	JWT  string `json:"jwt"`
+}
+
 type ConfirmRegCode struct {
 	JWT  string `json:"jwt"`
 	UID  string `json:"uid"`

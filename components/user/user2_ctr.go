@@ -24,9 +24,13 @@ func NewUserController(userService I_UserRepo) UserController {
 	return UserController{userService}
 }
 
-func SendCodeEmail(email string, code *Registration) {
+func SendCodeEmail(dearName, email string, code *Registration) {
 	//todo: go send email list goroutine
-	err := auth.SendCodeMail(email, code)
+	arg := &EmailRegistration{
+		User: dearName,
+		Code: code.Code,
+	}
+	err := auth.SendCodeMail(email, arg)
 	if err != nil {
 		Logger.Error(err, "send email error")
 	}
@@ -112,7 +116,7 @@ func (me *UserController) Register(regUser *CreateUserRequest) (*ResponseUser, *
 	resUser.IsRegistered = newUser.Reg.Registered
 	resUser.JWT = token
 
-	go SendCodeEmail(newUser.Email, newUser.Reg)
+	go SendCodeEmail(newUser.Name, newUser.Email, newUser.Reg)
 
 	Logger.V(2).Info("register success")
 	return &resUser, nil, http.StatusCreated
@@ -193,7 +197,7 @@ func (me *UserController) ForgotPassword(req *ForgotPwdRequest) (*ResponseStatus
 
 	//todo: go send email list goroutine
 	go func(email, token string) {
-		data := &PwdResetRequest{JWT: token}
+		data := &EmailPwdResetRequest{User: user.Name, JWT: token}
 		err := auth.SendForgotPwdMail(email, data)
 		if err != nil {
 			Logger.Error(err, "send email error")
@@ -237,7 +241,7 @@ func (me *UserController) ResendCode(req *GetUserRequest) (*ResponseStatus, *jso
 		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: fmt.Sprintf("please try again after %.1f seconds", 50.0-delta.Seconds())}, http.StatusOK
 	}
 
-	go SendCodeEmail(user.Email, user.Reg)
+	go SendCodeEmail(user.Name, user.Email, user.Reg)
 	user.Reg.SendCodeAt = time.Now()
 	user, err = me.userService.UpdateUser(user.Id, user)
 	if err != nil {

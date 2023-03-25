@@ -1,13 +1,20 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
-</head>
-<body>
-  <p>Kode registrasi anda adalah <b>{{ .Code }}</b></p>
-  <p>Your registration code is <b>{{ .Code }}</b></p>
-</body>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registration Code for Penyatu</title>
+  </head>
+  <body>
+    <p>Dear {{ .User }},</p>
+    <p>Thank you for choosing Penyatu for your communication needs. We are excited to have you as a user of our app!</p>
+    <p>To activate your account and start using the app, please enter the following registration code:</p>
+    <p><strong><span style="font-size: 24px; color: #ff5e00;">{{ .Code }}</span></strong></p>
+    <p>This code will allow you to create your account and start messaging your friends and family.</p>
+    <p>If you encounter any issues while registering or using the app, please do not hesitate to contact our support team at <a href="mailto:developerroyyan@gmail.com">support</a>. Our team is always here to assist you and ensure that you have the best possible experience with our app.</p>
+    <p>Thank you again for choosing Penyatu. We hope you enjoy using it!</p>
+    <p>Best regards,<br>
+    Royyan - Penyatu developer</p>
+  </body>
 </html>
