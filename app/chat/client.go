@@ -582,6 +582,10 @@ func (me *Client) notifyInfo(room *Room, sender I_User, msg, status, time string
 }
 
 func (me *Client) SendMsg(msg []byte) {
+	if me.disposed {
+		return
+	}
+
 	select {
 	case me.send <- msg:
 		utils.Log().V(2).Info(fmt.Sprintf("send msg"))
