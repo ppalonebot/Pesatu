@@ -354,6 +354,50 @@ func (me *UserController) UserLogin(login *Login) (*ResponseUser, *jsonrpc2.RPCE
 	return &resUser, nil, http.StatusOK
 }
 
+func (me *UserController) UserLoginGoogle(form *CreateUser) (*ResponseUser, *jsonrpc2.RPCError, int) {
+	Logger.V(2).Info(fmt.Sprintf("Google Login attempt from %s", form.Email))
+
+	var user *DBUser
+	var err error
+	var errres []*jsonrpc2.InputFieldError
+	// login.Username = strings.ToLower(login.Username)
+	if isemail := utils.IsValidEmail(form.Email); !isemail {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid email", Params: errres}, http.StatusOK
+	}
+
+	user, err = me.userService.FindUserByEmail(form.Email)
+	if err != nil {
+
+	}
+
+	_, err = utils.IsValidPassword(login.Password)
+	if err != nil {
+		errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "password"})
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error(), Params: errres}, http.StatusOK
+	}
+
+	//check password
+	ok, err := auth.ComparePassword(login.Password, user.Password)
+	if !ok || err != nil {
+		errres = append(errres, &jsonrpc2.InputFieldError{Error: "wrong password", Field: "password"})
+		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid password", Params: errres}, http.StatusOK
+	}
+
+	// Create a JWT
+	token, err := auth.CreateJWTToken(user.UID, user.Username, user.Reg.Code)
+	if err != nil {
+		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
+	}
+
+	var resUser ResponseUser
+	utils.CopyStruct(user, &resUser)
+	resUser.IsRegistered = user.Reg.Registered
+	resUser.JWT = token
+
+	Logger.V(2).Info("logged in")
+	return &resUser, nil, http.StatusOK
+}
+
 func (me *UserController) UserLogout(userUID, code string) (*ResponseStatus, *jsonrpc2.RPCError, int) {
 	Logger.V(2).Info(fmt.Sprintf("Logout attempt from %s", userUID))
 

@@ -28,6 +28,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	oa2 "google.golang.org/api/oauth2/v2"
 )
 
 type logC struct {
@@ -49,6 +52,9 @@ var (
 	certFile       string
 	privkey        string
 	mongosh        string
+	gcli           string
+	gsec           string
+	gdir           string
 )
 
 func showHelp() {
@@ -175,6 +181,13 @@ func readEnv() {
 	privkey = os.Getenv("KeyFile")
 	mongosh = os.Getenv("Mongosh")
 
+	google := os.Getenv("GOCLI")
+	if len(google) > 0 {
+		gcli = google
+		gsec = os.Getenv("GOSEC")
+		gdir = os.Getenv("GOREDIRECT")
+	}
+
 	host := os.Getenv("SMTP_HOST")
 	if len(host) > 0 {
 		port := os.Getenv("SMTP_PORT")
@@ -235,6 +248,17 @@ func main() {
 	s.SetTrustedProxies(nil)
 	limiter := ratelimit.NewBucketWithRate(100, 100)
 
+	googleConfig := &oauth2.Config{
+		ClientID:     gcli,
+		ClientSecret: gsec,
+		RedirectURL:  gdir,
+		Scopes: []string{
+			oa2.UserinfoEmailScope,
+			oa2.UserinfoProfileScope,
+		},
+		Endpoint: google.Endpoint,
+	}
+
 	allowOrigin := []string{"http://localhost:3000"}
 	if len(devcors) > 0 {
 		a, err := utils.ConvertToArray(devcors)
@@ -261,7 +285,10 @@ func main() {
 				return
 			}
 
-			c.String(http.StatusOK, "Hello World! The API works!")
+			c.Writer.Header().Set("Content-Type", "text/html")
+			c.Writer.WriteHeader(http.StatusOK)
+			// c.Writer.WriteString(`<a href="/api/login/google">Login with Google</a>`)
+			c.Writer.WriteString(`<h1>Hello World! The api works!</h1>`)
 		})
 	}
 
@@ -278,7 +305,7 @@ func main() {
 
 	server.Use(auth.AuthMiddleware())
 
-	UserRouteController := user.NewUserRoute(mongoclient, ctx, logger, limiter)
+	UserRouteController := user.NewUserRoute(mongoclient, ctx, logger, limiter, googleConfig)
 	UserRouteController.InitRouteTo(server)
 
 	UploadImageRouteCtr := images.NewUploadImageRoute(mongoclient, ctx, logger, limiter, UserRouteController.GetUserService())

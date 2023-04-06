@@ -14,6 +14,10 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/juju/ratelimit"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	oa2 "google.golang.org/api/oauth2/v2"
+	"google.golang.org/api/option"
 )
 
 var Logger logr.Logger = logr.Discard()
@@ -21,15 +25,16 @@ var Logger logr.Logger = logr.Discard()
 type UserRoute struct {
 	userController UserController
 	limiter        *ratelimit.Bucket
+	googleConfig   *oauth2.Config
 }
 
-func NewUserRoute(mongoclient *mongo.Client, ctx context.Context, l logr.Logger, limiter *ratelimit.Bucket) UserRoute {
+func NewUserRoute(mongoclient *mongo.Client, ctx context.Context, l logr.Logger, limiter *ratelimit.Bucket, googleConfig *oauth2.Config) UserRoute {
 	Logger = l
 	Logger.V(2).Info("NewUserRoute created")
 	userCollection := mongoclient.Database("pesatu").Collection("users")
 	userService := NewUserService(userCollection, ctx)
 	userController := NewUserController(userService)
-	return UserRoute{userController, limiter}
+	return UserRoute{userController, limiter, googleConfig}
 }
 
 func CheckAllowCredentials(ctx *gin.Context, res *ResponseUser, code int) *ResponseUser {
@@ -70,6 +75,58 @@ func (me *UserRoute) InitRouteTo(rg *gin.RouterGroup) {
 	router := rg.Group("/usr")
 	router.POST("/rpc", me.RateLimit, me.RPCHandle)
 	router.GET("/resetpwd", me.RateLimit, me.ResetPwdHandler)
+
+	googleroute := rg.Group("google")
+	googleroute.GET("/callback", me.GoogleCallback)
+	googleroute.GET("/login", me.RateLimit, me.GoogleLogin)
+}
+
+// Google OAuth 2.0 login handler
+func (me *UserRoute) GoogleLogin(c *gin.Context) {
+	url := me.googleConfig.AuthCodeURL("state", oauth2.AccessTypeOffline)
+	c.Redirect(http.StatusTemporaryRedirect, url)
+}
+
+// Google OAuth 2.0 callback handler
+func (me *UserRoute) GoogleCallback(c *gin.Context) {
+	code := c.Query("code")
+	token, err := me.googleConfig.Exchange(oauth2.NoContext, code)
+	if err != nil {
+		utils.Log().Error(err, "Error exchanging code for google token:")
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	ctx := context.Background()
+	service, err := oa2.NewService(ctx, option.WithTokenSource(me.googleConfig.TokenSource(ctx, token)))
+	if err != nil {
+		utils.Log().Error(err, "error while creating oauth2 service: %v")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create oauth2 service"})
+		return
+	}
+
+	userInfo, err := service.Userinfo.Get().Do()
+	if err != nil {
+		utils.Log().Error(err, "Error getting user info:")
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	// TODO: Use the user's Google API data
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Successfully authenticated with Google",
+		"user":    userInfo,
+	})
+	// {"message":"Successfully authenticated with Google","user":{"email":"royyanwibisono@gmail.com","family_name":"Walker","given_name":"Rain","id":"100948440327886553471","locale":"en","name":"Rain Walker","picture":"https://lh3.googleusercontent.com/a/AGNmyxZ0yePpO0LijocP4o3BFjOD6b3BWlBuoU-FXYPDRA=s96-c","verified_email":true}}
+	form := &CreateUser{
+		Email:  userInfo.Email,
+		Name:   userInfo.Name,
+		Avatar: userInfo.Picture,
+	}
+	res, _, retcode := me.userController.UserLoginGoogle(form)
+	res = CheckAllowCredentials(c, res, retcode)
+
+	c.Redirect(http.StatusTemporaryRedirect, "/")
 }
 
 func (me *UserRoute) RateLimit(ctx *gin.Context) {
