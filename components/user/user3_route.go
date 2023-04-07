@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"pesatu/auth"
 	"pesatu/jsonrpc2"
 	"pesatu/utils"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,7 +17,6 @@ import (
 	"github.com/juju/ratelimit"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
 	oa2 "google.golang.org/api/oauth2/v2"
 	"google.golang.org/api/option"
 )
@@ -77,7 +78,7 @@ func (me *UserRoute) InitRouteTo(rg *gin.RouterGroup) {
 	router.GET("/resetpwd", me.RateLimit, me.ResetPwdHandler)
 
 	googleroute := rg.Group("google")
-	googleroute.GET("/callback", me.GoogleCallback)
+	googleroute.POST("/callback", me.RateLimit, me.GoogleCallback)
 	googleroute.GET("/login", me.RateLimit, me.GoogleLogin)
 }
 
@@ -89,11 +90,32 @@ func (me *UserRoute) GoogleLogin(c *gin.Context) {
 
 // Google OAuth 2.0 callback handler
 func (me *UserRoute) GoogleCallback(c *gin.Context) {
-	code := c.Query("code")
+	var jreq jsonrpc2.RPCRequest
+	if err := c.ShouldBindJSON(&jreq); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "jsonrpc fail"})
+		return
+	}
+
+	p := struct {
+		Code string `json:"code"`
+	}{}
+	err := json.Unmarshal(jreq.Params, &p)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "json invalid RPC"})
+		return
+	}
+
+	u, err := url.Parse(p.Code)
+	if err != nil {
+		panic(err)
+	}
+
+	code := u.Query().Get("code")
+	// code = url.PathEscape(code)
 	token, err := me.googleConfig.Exchange(oauth2.NoContext, code)
 	if err != nil {
-		utils.Log().Error(err, "Error exchanging code for google token:")
-		c.AbortWithError(http.StatusInternalServerError, err)
+		utils.Log().Error(err, "Error exchanging code for google token: "+code)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error exchanging code for google token"})
 		return
 	}
 
@@ -112,21 +134,28 @@ func (me *UserRoute) GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	// TODO: Use the user's Google API data
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Successfully authenticated with Google",
-		"user":    userInfo,
-	})
 	// {"message":"Successfully authenticated with Google","user":{"email":"royyanwibisono@gmail.com","family_name":"Walker","given_name":"Rain","id":"100948440327886553471","locale":"en","name":"Rain Walker","picture":"https://lh3.googleusercontent.com/a/AGNmyxZ0yePpO0LijocP4o3BFjOD6b3BWlBuoU-FXYPDRA=s96-c","verified_email":true}}
 	form := &CreateUser{
-		Email:  userInfo.Email,
-		Name:   userInfo.Name,
-		Avatar: userInfo.Picture,
+		Email:  strings.TrimSpace(userInfo.Email),
+		Name:   strings.TrimSpace(userInfo.Name),
+		Avatar: strings.TrimSpace(userInfo.Picture),
 	}
-	res, _, retcode := me.userController.UserLoginGoogle(form)
-	res = CheckAllowCredentials(c, res, retcode)
 
-	c.Redirect(http.StatusTemporaryRedirect, "/")
+	jres := &jsonrpc2.RPCResponse{
+		JSONRPC: "2.0",
+		ID:      userInfo.Id,
+	}
+
+	res, e, retcode := me.userController.UserLoginGoogle(form)
+	res = CheckAllowCredentials(c, res, retcode)
+	jres.Result, _ = utils.ToRawMessage(res)
+	jres.Error = e
+
+	if jres.Error != nil {
+		Logger.Error(fmt.Errorf(jres.Error.Message), "response with error")
+	}
+
+	c.JSON(retcode, jres)
 }
 
 func (me *UserRoute) RateLimit(ctx *gin.Context) {

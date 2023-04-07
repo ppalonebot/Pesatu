@@ -21,7 +21,28 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+const UsernameLength = 30
+const NameLength = 50
+
 var logger logr.Logger = logr.Discard()
+var seededRand *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+func CreateUsername() string {
+	timestamp := strconv.FormatInt(time.Now().UnixNano(), 10)
+	usernameLengthWithoutTimestamp := UsernameLength - len(timestamp)
+
+	if usernameLengthWithoutTimestamp <= 0 {
+		return strings.ToLower(timestamp[:UsernameLength])
+	}
+
+	b := make([]byte, usernameLengthWithoutTimestamp)
+	for i := range b {
+		b[i] = charset[seededRand.Intn(len(charset))]
+	}
+
+	return strings.ToLower(string(b) + timestamp)
+}
 
 func InitLogger(l logr.Logger) {
 	logger = l
@@ -47,9 +68,11 @@ func ConvertToArray(s string) ([]string, error) {
 }
 
 func GenerateRandomNumber() string {
-	rand.Seed(time.Now().UnixNano())
+
+	// rand.Seed(time.Now().UnixNano())
 	// Generate a random number between 100000 and 999999
-	num := rand.Intn(900000) + 100000
+	// num := rand.Intn(900000) + 100000
+	num := seededRand.Intn(900000) + 100000
 
 	// Convert the number to a string
 	numString := strconv.Itoa(num)
@@ -102,8 +125,8 @@ func IsValidName(s string) (bool, error) {
 		return false, errors.New("name can not empty")
 	}
 
-	if len(s) > 50 {
-		return false, errors.New("name to long, max 50 characters")
+	if len(s) > NameLength {
+		return false, errors.New(fmt.Sprintf("name to long, max %d characters", NameLength))
 	}
 
 	injected := ValidateLinkOrJS(s)
@@ -165,8 +188,8 @@ func IsValidUsername(s string) (bool, error) {
 		return false, errors.New("username to short")
 	}
 
-	if len(s) > 20 {
-		return false, errors.New("username to long, max 20 characters")
+	if len(s) > UsernameLength {
+		return false, errors.New(fmt.Sprintf("username to long, max %d characters", UsernameLength))
 	}
 
 	injected := ValidateLinkOrJS(s)

@@ -359,43 +359,78 @@ func (me *UserController) UserLoginGoogle(form *CreateUser) (*ResponseUser, *jso
 
 	var user *DBUser
 	var err error
-	var errres []*jsonrpc2.InputFieldError
-	// login.Username = strings.ToLower(login.Username)
+
 	if isemail := utils.IsValidEmail(form.Email); !isemail {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid email", Params: errres}, http.StatusOK
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid email"}, http.StatusOK
 	}
 
-	user, err = me.userService.FindUserByEmail(form.Email)
+	if len(form.Name) > utils.NameLength {
+		form.Name = form.Name[:utils.NameLength-1]
+	}
+
+	_, err = utils.IsValidName(form.Name)
 	if err != nil {
-
+		return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "invalid Name"}, http.StatusOK
 	}
 
-	_, err = utils.IsValidPassword(login.Password)
-	if err != nil {
-		errres = append(errres, &jsonrpc2.InputFieldError{Error: err.Error(), Field: "password"})
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: err.Error(), Params: errres}, http.StatusOK
+	user, _ = me.userService.FindUserByEmail(form.Email)
+	if user != nil {
+		// Create a JWT
+		token, err := auth.CreateJWTToken(user.UID, user.Username, user.Reg.Code)
+		if err != nil {
+			return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
+		}
+
+		var resUser ResponseUser
+		utils.CopyStruct(user, &resUser)
+		resUser.IsRegistered = user.Reg.Registered
+		resUser.JWT = token
+
+		Logger.V(2).Info("logged in")
+		return &resUser, nil, http.StatusOK
 	}
 
-	//check password
-	ok, err := auth.ComparePassword(login.Password, user.Password)
-	if !ok || err != nil {
-		errres = append(errres, &jsonrpc2.InputFieldError{Error: "wrong password", Field: "password"})
-		return nil, &jsonrpc2.RPCError{Code: http.StatusForbidden, Message: "invalid password", Params: errres}, http.StatusOK
+	nu := &CreateUser{
+		UID:      uuid.New().String(),
+		Name:     form.Name,
+		Username: utils.CreateUsername(),
+		Email:    form.Email,
+		Password: "#bygoogle",
+		Avatar:   form.Avatar,
+		Reg: &Registration{
+			Registered: true,
+			Code:       utils.GenerateRandomNumber(),
+			SendCodeAt: time.Now(),
+		},
 	}
 
-	// Create a JWT
-	token, err := auth.CreateJWTToken(user.UID, user.Username, user.Reg.Code)
-	if err != nil {
-		return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
-	}
+	for i := 0; i < 5; i++ {
+		newUser, err := me.userService.CreateUser(nu)
+		if err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				nu.Username = utils.CreateUsername()
+				continue
+			}
+			return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: err.Error()}, http.StatusOK
+		}
 
-	var resUser ResponseUser
-	utils.CopyStruct(user, &resUser)
-	resUser.IsRegistered = user.Reg.Registered
-	resUser.JWT = token
+		// Create a JWT
+		token, err := auth.CreateJWTToken(newUser.UID, newUser.Username, newUser.Reg.Code)
+		if err != nil {
+			return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
+		}
 
-	Logger.V(2).Info("logged in")
-	return &resUser, nil, http.StatusOK
+		var resUser ResponseUser
+		utils.CopyStruct(newUser, &resUser)
+		resUser.IsRegistered = newUser.Reg.Registered
+		resUser.JWT = token
+
+		Logger.V(2).Info("register success")
+		return &resUser, nil, http.StatusCreated
+
+	} //end loop
+
+	return nil, &jsonrpc2.RPCError{Code: http.StatusBadRequest, Message: "error createing unique name"}, http.StatusOK
 }
 
 func (me *UserController) UserLogout(userUID, code string) (*ResponseStatus, *jsonrpc2.RPCError, int) {
