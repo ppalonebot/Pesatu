@@ -398,7 +398,7 @@ func (me *UserController) UserLoginGoogle(form *CreateUser) (*ResponseUser, *jso
 		Password: "#bygoogle",
 		Avatar:   form.Avatar,
 		Reg: &Registration{
-			Registered: true,
+			Registered: false,
 			Code:       utils.GenerateRandomNumber(),
 			SendCodeAt: time.Now(),
 		},
@@ -419,6 +419,8 @@ func (me *UserController) UserLoginGoogle(form *CreateUser) (*ResponseUser, *jso
 		if err != nil {
 			return nil, &jsonrpc2.RPCError{Code: http.StatusInternalServerError, Message: err.Error()}, http.StatusOK
 		}
+
+		go SendCodeEmail(newUser.Name, newUser.Email, newUser.Reg)
 
 		var resUser ResponseUser
 		utils.CopyStruct(newUser, &resUser)
