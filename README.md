@@ -1,4 +1,4 @@
-#Pesatu - a Webchat and Videocall app in golang
+# Pesatu a Webchat and Videocall app in golang
 
 Introducing Pesatu - This is a simple webchat application that uses Golang, Websocket, and WebRTC technologies to provide real-time communication between users.
 
