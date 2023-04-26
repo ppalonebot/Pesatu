@@ -26,7 +26,7 @@ var CONFIG_AUTH_EMAIL = "developerroyyan@gmail.com"
 // choose cutom
 // input appname then Generate
 // copy password bellow, and done
-var CONFIG_AUTH_PASSWORD = "hnpsifhwswjntvsd"
+var CONFIG_AUTH_PASSWORD = ""
 
 func SetConfigSMTP(host, senderName, email, password string, port int) {
 	CONFIG_SMTP_HOST = host
